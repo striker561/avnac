@@ -77,6 +77,13 @@ import {
   TRANSFORM_DIMENSION_END_ACTIONS,
   type TransformDimensionUi,
 } from '../lib/fabric-transform-dimension-ui'
+import {
+  sceneCornerRadiusFromImage,
+  sceneCornerRadiusFromRect,
+  sceneCornerRadiusMaxForObject,
+  setSceneCornerRadiusOnImage,
+  setSceneCornerRadiusOnRect,
+} from '../lib/fabric-corner-radius'
 import { linearGradientForBox } from '../lib/fabric-linear-gradient'
 import { loadGoogleFontFamily } from '../lib/load-google-font'
 import ShapeOptionsToolbar from './shape-options-toolbar'
@@ -92,11 +99,15 @@ import BackgroundPopover, {
   bgValueToSwatch,
   type BgValue,
 } from './background-popover'
+import CornerRadiusToolbarControl from './corner-radius-toolbar-control'
 import CanvasZoomSlider from './canvas-zoom-slider'
 import CanvasElementToolbar, {
   type CanvasAlignKind,
 } from './canvas-element-toolbar'
-import { FloatingToolbarShell } from './floating-toolbar-shell'
+import {
+  FloatingToolbarDivider,
+  FloatingToolbarShell,
+} from './floating-toolbar-shell'
 import { getAvnacLocked, setAvnacLocked } from '../lib/avnac-object-lock'
 import { ARTBOARD_PRESETS } from '../data/artboard-presets'
 import type { ExportPngOptions } from './editor-export-menu'
@@ -299,6 +310,12 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   const [shapeToolbarModel, setShapeToolbarModel] = useState<{
     meta: AvnacShapeMeta
     paint: BgValue
+    rectCornerRadius?: number
+    rectCornerRadiusMax?: number
+  } | null>(null)
+  const [imageCornerToolbar, setImageCornerToolbar] = useState<{
+    radius: number
+    max: number
   } | null>(null)
   const [selectionOpacityPct, setSelectionOpacityPct] = useState(100)
   const [sceneSnapGuides, setSceneSnapGuides] = useState<SceneSnapGuide[]>([])
@@ -378,11 +395,39 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     } else {
       paint = bgValueFromFabricFill(obj)
     }
-    setShapeToolbarModel({ meta: { ...meta }, paint })
+    if (meta.kind === 'rect' && obj instanceof mod.Rect) {
+      setShapeToolbarModel({
+        meta: { ...meta },
+        paint,
+        rectCornerRadius: sceneCornerRadiusFromRect(obj),
+        rectCornerRadiusMax: sceneCornerRadiusMaxForObject(obj),
+      })
+    } else {
+      setShapeToolbarModel({ meta: { ...meta }, paint })
+    }
     if (isAvnacStrokeLineLike(meta) && obj instanceof mod.Group) {
       syncAvnacArrowCurveControlVisibility(obj)
     }
     obj.setCoords()
+  }, [])
+
+  const syncImageCornerToolbar = useCallback(() => {
+    const canvas = fabricCanvasRef.current
+    const mod = fabricModRef.current
+    if (!canvas || !mod?.FabricImage) {
+      setImageCornerToolbar(null)
+      return
+    }
+    const targets = canvas.getActiveObjects()
+    const obj = canvas.getActiveObject()
+    if (targets.length !== 1 || !obj || !(obj instanceof mod.FabricImage)) {
+      setImageCornerToolbar(null)
+      return
+    }
+    setImageCornerToolbar({
+      radius: sceneCornerRadiusFromImage(obj, mod.Rect),
+      max: sceneCornerRadiusMaxForObject(obj),
+    })
   }, [])
 
   const syncSelectionOpacity = useCallback(() => {
@@ -508,6 +553,36 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     },
     [syncTextToolbar, syncShapeToolbar],
   )
+
+  const applyRectCornerRadius = useCallback(
+    (px: number) => {
+      const canvas = fabricCanvasRef.current
+      const mod = fabricModRef.current
+      if (!canvas || !mod) return
+      const obj = canvas.getActiveObject()
+      if (!obj || !(obj instanceof mod.Rect)) return
+      setSceneCornerRadiusOnRect(obj, px)
+      canvas.requestRenderAll()
+      selectionTick()
+      syncShapeToolbar()
+    },
+    [syncShapeToolbar],
+  )
+
+  const applyImageCornerRadius = useCallback((px: number) => {
+    const canvas = fabricCanvasRef.current
+    const mod = fabricModRef.current
+    if (!canvas || !mod?.FabricImage) return
+    const obj = canvas.getActiveObject()
+    if (!obj || !(obj instanceof mod.FabricImage)) return
+    setSceneCornerRadiusOnImage(obj, px, mod)
+    canvas.requestRenderAll()
+    selectionTick()
+    setImageCornerToolbar({
+      radius: sceneCornerRadiusFromImage(obj, mod.Rect),
+      max: sceneCornerRadiusMaxForObject(obj),
+    })
+  }, [])
 
   const syncSelection = useCallback(() => {
     const canvas = fabricCanvasRef.current
@@ -1045,7 +1120,15 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     if (!ready) return
     syncShapeToolbar()
     syncSelectionOpacity()
-  }, [ready, selectionRev, zoomPercent, syncShapeToolbar, syncSelectionOpacity])
+    syncImageCornerToolbar()
+  }, [
+    ready,
+    selectionRev,
+    zoomPercent,
+    syncShapeToolbar,
+    syncSelectionOpacity,
+    syncImageCornerToolbar,
+  ])
 
   useLayoutEffect(() => {
     if (!ready) return
@@ -2277,6 +2360,21 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
             onArrowRoundedEnds={applyArrowRoundedEnds}
             onArrowStrokeWidth={applyArrowStrokeWidth}
             onArrowPathType={applyArrowPathType}
+            rectCornerRadius={
+              shapeToolbarModel.meta.kind === 'rect'
+                ? shapeToolbarModel.rectCornerRadius
+                : undefined
+            }
+            rectCornerRadiusMax={
+              shapeToolbarModel.meta.kind === 'rect'
+                ? shapeToolbarModel.rectCornerRadiusMax
+                : undefined
+            }
+            onRectCornerRadius={
+              shapeToolbarModel.meta.kind === 'rect'
+                ? applyRectCornerRadius
+                : undefined
+            }
             footerSlot={selectionTransparencySlot}
           />
         ) : null}
@@ -2286,7 +2384,19 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         !shapeToolbarModel ? (
           <FloatingToolbarShell role="toolbar" aria-label="Selection">
             <div className="flex items-center py-1 pl-2 pr-2">
-              {selectionTransparencySlot}
+              {imageCornerToolbar ? (
+                <CornerRadiusToolbarControl
+                  value={imageCornerToolbar.radius}
+                  max={imageCornerToolbar.max}
+                  onChange={applyImageCornerRadius}
+                />
+              ) : null}
+              {selectionTransparencySlot ? (
+                <>
+                  {imageCornerToolbar ? <FloatingToolbarDivider /> : null}
+                  {selectionTransparencySlot}
+                </>
+              ) : null}
             </div>
           </FloatingToolbarShell>
         ) : null}
