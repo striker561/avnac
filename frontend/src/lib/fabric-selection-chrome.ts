@@ -6,14 +6,11 @@ import type {
   Point,
 } from 'fabric'
 
-/** Canva product purple (selection frame only — handles use neutral stroke). */
-export const CANVA_PURPLE = '#8B3DFF'
-/** Screen padding between content AABB and hover stroke (Canva-like breathing room). */
-const CANVA_HOVER_PAD_CSS_PX = 6
-/** Hover rule thickness in CSS pixels (upper canvas is device pixels × retina). */
-const CANVA_HOVER_LINE_CSS_PX = 2
-/** White handle rings in Canva use a thin cool-neutral stroke, not purple. */
-const CANVA_HANDLE_STROKE = '#B4B4C0'
+export const EDITOR_ACCENT_PURPLE = '#8B3DFF'
+
+const HOVER_OUTLINE_PAD_CSS_PX = 6
+const HOVER_OUTLINE_LINE_CSS_PX = 2
+const HANDLE_RING_STROKE = '#B4B4C0'
 
 type ControlStyleOverride = Parameters<Control['render']>[3]
 
@@ -25,7 +22,6 @@ function isActiveSelectionInstance(o: FabricObject | undefined): o is ActiveSele
   return !!o && typeof o === 'object' && 'multiSelectionStacking' in o
 }
 
-/** Same as `ctx.transform(a,b,c,d,e,f)` applied to (x,y). */
 function transformSceneToCanvas(
   x: number,
   y: number,
@@ -35,7 +31,7 @@ function transformSceneToCanvas(
   return { x: a * x + c * y + e, y: b * x + d * y + f }
 }
 
-function drawCanvaHoverOutline(
+function drawHoverOutline(
   ctx: CanvasRenderingContext2D,
   canvas: Canvas,
   target: FabricObject,
@@ -43,7 +39,7 @@ function drawCanvaHoverOutline(
   const vpt = canvas.viewportTransform
   const rs = canvas.getRetinaScaling?.() ?? 1
   const zoom = Math.max(Math.abs(vpt[0]), Math.abs(vpt[3]), 1e-6)
-  const padScene = CANVA_HOVER_PAD_CSS_PX / zoom
+  const padScene = HOVER_OUTLINE_PAD_CSS_PX / zoom
 
   const { left, top, width, height } = target.getBoundingRect()
   const corners = [
@@ -66,8 +62,8 @@ function drawCanvaHoverOutline(
   }
 
   ctx.save()
-  ctx.strokeStyle = CANVA_PURPLE
-  ctx.lineWidth = Math.max(1, CANVA_HOVER_LINE_CSS_PX * rs)
+  ctx.strokeStyle = EDITOR_ACCENT_PURPLE
+  ctx.lineWidth = Math.max(1, HOVER_OUTLINE_LINE_CSS_PX * rs)
   ctx.setLineDash([])
   ctx.strokeRect(minX, minY, maxX - minX, maxY - minY)
   ctx.restore()
@@ -92,7 +88,7 @@ function renderSidePill(
   const strokeColor =
     o.cornerStrokeColor ||
     fabricObject.cornerStrokeColor ||
-    CANVA_HANDLE_STROKE
+    HANDLE_RING_STROKE
   const fillColor = o.cornerColor || fabricObject.cornerColor || '#ffffff'
   const w = xSize
   const h = ySize
@@ -235,9 +231,9 @@ function patchStrokeBordersScreenThickness(fab: typeof import('fabric')) {
 export function installFabricSelectionChrome(fabric: typeof import('fabric')) {
   if (!ownDefaultsApplied) {
     Object.assign(fabric.InteractiveFabricObject.ownDefaults, {
-      borderColor: CANVA_PURPLE,
+      borderColor: EDITOR_ACCENT_PURPLE,
       cornerColor: '#ffffff',
-      cornerStrokeColor: CANVA_HANDLE_STROKE,
+      cornerStrokeColor: HANDLE_RING_STROKE,
       transparentCorners: false,
       cornerStyle: 'circle',
       cornerSize: 56,
@@ -272,14 +268,7 @@ type CanvasWithInternals = Canvas & {
   _activeObject?: FabricObject
 }
 
-/**
- * Per-object hover on the artboard (uses canvas `_hoveredTarget`), not the outer canvas wrapper.
- * Thin purple frame, no handles. Selection still uses normal Fabric controls.
- *
- * Fabric updates `_hoveredTarget` on `mouse:move` but does not call `requestRenderAll()`, so the
- * hover stroke would never paint unless we redraw when the hovered object changes.
- */
-export function attachFabricCanvaHoverOutline(canvas: Canvas) {
+export function attachFabricHoverOutline(canvas: Canvas) {
   const c = canvas as CanvasWithInternals
   let lastHovered: FabricObject | undefined
 
@@ -316,6 +305,6 @@ export function attachFabricCanvaHoverOutline(canvas: Canvas) {
       return
     }
 
-    drawCanvaHoverOutline(ctx, c, hovered)
+    drawHoverOutline(ctx, c, hovered)
   }
 }
