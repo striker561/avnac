@@ -17,15 +17,17 @@ import {
   useState,
 } from 'react'
 import { useViewportAwarePopoverPlacement } from '../hooks/use-viewport-aware-popover'
+import { installArtboardCenterSnap } from '../lib/fabric-artboard-center-snap'
 import {
-  installCanvaArrowControls,
-  installCanvaLineControls,
   ensureAvnacArrowEndpoints,
+  installArrowEndpointControls,
+  installLineEndpointControls,
   syncAvnacArrowCurveControlVisibility,
   syncAvnacArrowEndpointsFromGeometry,
-} from '../lib/fabric-canva-line-arrow-controls'
+} from '../lib/fabric-line-arrow-controls'
 import {
-  attachFabricCanvaHoverOutline,
+  attachFabricHoverOutline,
+  EDITOR_ACCENT_PURPLE,
   installFabricSelectionChrome,
 } from '../lib/fabric-selection-chrome'
 import { regularPolygonPoints, starPolygonPoints } from '../lib/avnac-shape-geometry'
@@ -71,9 +73,12 @@ import BackgroundPopover, {
   bgValueToSwatch,
   type BgValue,
 } from './background-popover'
+import CanvasZoomSlider from './canvas-zoom-slider'
 
 const ARTBOARD_W = 4000
 const ARTBOARD_H = 4000
+const ZOOM_MIN_PCT = 5
+const ZOOM_MAX_PCT = 100
 
 const DEFAULT_PAINT: BgValue = { type: 'solid', color: '#262626' }
 
@@ -165,7 +170,9 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   function FabricEditor({ onReadyChange }, ref) {
   const canvasElRef = useRef<HTMLCanvasElement>(null)
   const artboardFrameRef = useRef<HTMLDivElement>(null)
+  const canvasZoomRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const zoomUserAdjustedRef = useRef(false)
   const selectionToolsRef = useRef<HTMLDivElement>(null)
   const shapeToolSplitRef = useRef<HTMLDivElement>(null)
   const bottomToolbarRef = useRef<HTMLDivElement>(null)
@@ -173,7 +180,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   const fabricModRef = useRef<typeof import('fabric') | null>(null)
 
   const [ready, setReady] = useState(false)
-  const [fitZoomPercent, setFitZoomPercent] = useState<number | null>(null)
+  const [zoomPercent, setZoomPercent] = useState<number | null>(null)
   const [bgValue, setBgValue] = useState<BgValue>({ type: 'solid', color: '#ffffff' })
   const [bgPopoverOpen, setBgPopoverOpen] = useState(false)
   const [selectedPaint, setSelectedPaint] = useState<BgValue>(DEFAULT_PAINT)
@@ -189,6 +196,10 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     meta: AvnacShapeMeta
     paint: BgValue
   } | null>(null)
+  const [artboardSnapGuides, setArtboardSnapGuides] = useState({
+    vertical: false,
+    horizontal: false,
+  })
 
   const backgroundPopoverAnchorRef = useRef<HTMLDivElement>(null)
   const backgroundPopoverPanelRef = useRef<HTMLDivElement>(null)
@@ -379,6 +390,29 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     setSelectedPaint(bgValueFromFabricFill(obj))
   }, [])
 
+  const applyCanvasZoom = useCallback(
+    (pct: number) => {
+      const canvas = fabricCanvasRef.current
+      if (!canvas) return
+      const clamped = Math.max(
+        ZOOM_MIN_PCT,
+        Math.min(ZOOM_MAX_PCT, Math.round(pct)),
+      )
+      const s = clamped / 100
+      const dw = ARTBOARD_W * s
+      const dh = ARTBOARD_H * s
+      canvas.setDimensions({ width: dw, height: dh }, { cssOnly: true })
+      canvas.calcOffset()
+      canvas.requestRenderAll()
+      setZoomPercent(clamped)
+      queueMicrotask(() => {
+        syncTextToolbar()
+        syncShapeToolbar()
+      })
+    },
+    [syncTextToolbar, syncShapeToolbar],
+  )
+
   const fitArtboardToViewport = useCallback(() => {
     const canvas = fabricCanvasRef.current
     const viewport = viewportRef.current
@@ -390,18 +424,25 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
 
     const raw = Math.min(cw / ARTBOARD_W, ch / ARTBOARD_H) * 0.98
     const scale = Math.min(1, raw)
-    const dw = ARTBOARD_W * scale
-    const dh = ARTBOARD_H * scale
+    const fitPct = Math.max(
+      ZOOM_MIN_PCT,
+      Math.min(ZOOM_MAX_PCT, Math.round(scale * 100)),
+    )
+    applyCanvasZoom(fitPct)
+  }, [applyCanvasZoom])
 
-    canvas.setDimensions({ width: dw, height: dh }, { cssOnly: true })
-    canvas.calcOffset()
-    canvas.requestRenderAll()
-    setFitZoomPercent(Math.max(1, Math.min(100, Math.round(scale * 100))))
-    queueMicrotask(() => {
-      syncTextToolbar()
-      syncShapeToolbar()
-    })
-  }, [syncTextToolbar, syncShapeToolbar])
+  const onZoomSliderChange = useCallback(
+    (pct: number) => {
+      zoomUserAdjustedRef.current = true
+      applyCanvasZoom(pct)
+    },
+    [applyCanvasZoom],
+  )
+
+  const onZoomFitRequest = useCallback(() => {
+    zoomUserAdjustedRef.current = false
+    fitArtboardToViewport()
+  }, [fitArtboardToViewport])
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current
@@ -427,6 +468,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
 
     let disposed = false
     let canvas: Canvas | null = null
+    let removeArtboardCenterSnap: (() => void) | undefined
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Backspace' && e.key !== 'Delete') return
@@ -473,7 +515,12 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       }
 
       fabricCanvasRef.current = canvas
-      attachFabricCanvaHoverOutline(canvas)
+      attachFabricHoverOutline(canvas)
+      removeArtboardCenterSnap = installArtboardCenterSnap(canvas, {
+        width: ARTBOARD_W,
+        height: ARTBOARD_H,
+        onGuidesChange: setArtboardSnapGuides,
+      })
 
       const onSelect = () => {
         syncFillFromSelection()
@@ -511,6 +558,8 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       setCanvasBodySelected(true)
 
       if (disposed) {
+        removeArtboardCenterSnap?.()
+        removeArtboardCenterSnap = undefined
         canvas.off('selection:created', onSelect)
         canvas.off('selection:updated', onSelect)
         canvas.off('selection:cleared', onClear)
@@ -525,7 +574,10 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
 
     return () => {
       disposed = true
+      zoomUserAdjustedRef.current = false
       window.removeEventListener('keydown', onKeyDown)
+      removeArtboardCenterSnap?.()
+      removeArtboardCenterSnap = undefined
       const c = fabricCanvasRef.current
       fabricCanvasRef.current = null
       fabricModRef.current = null
@@ -540,7 +592,17 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     const canvas = fabricCanvasRef.current
     if (!viewport || !canvas) return
 
-    const fit = () => fitArtboardToViewport()
+    const fit = () => {
+      const c = fabricCanvasRef.current
+      const v = viewportRef.current
+      if (!c || !v) return
+      if (!zoomUserAdjustedRef.current) {
+        fitArtboardToViewport()
+      } else {
+        c.calcOffset()
+        c.requestRenderAll()
+      }
+    }
     fit()
     const ro = new ResizeObserver(fit)
     ro.observe(viewport)
@@ -623,7 +685,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   useLayoutEffect(() => {
     if (!ready) return
     syncShapeToolbar()
-  }, [ready, selectionTick, fitZoomPercent, syncShapeToolbar])
+  }, [ready, selectionTick, zoomPercent, syncShapeToolbar])
 
   useEffect(() => {
     if (!shapesPopoverOpen) return
@@ -659,6 +721,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       const t = e.target as Node
       if (selectionToolsRef.current?.contains(t)) return
       if (bottomToolbarRef.current?.contains(t)) return
+      if (canvasZoomRef.current?.contains(t)) return
       if (isEventOnFabricCanvas(c, t)) return
 
       if (c.getActiveObject()) {
@@ -799,7 +862,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     })
     setAvnacShapeMeta(line, { kind: 'line' })
     applyBgValueToStroke(mod, line, selectedPaint)
-    installCanvaLineControls(line)
+    installLineEndpointControls(line)
     canvas.add(line)
     canvas.setActiveObject(line)
     canvas.requestRenderAll()
@@ -834,7 +897,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       arrowRoundedEnds: false,
       arrowPathType: 'straight',
     })
-    installCanvaArrowControls(g)
+    installArrowEndpointControls(g)
     canvas.add(g)
     canvas.setActiveObject(g)
     canvas.requestRenderAll()
@@ -1134,19 +1197,53 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
           <div className="relative z-0 inline-block">
             <div
               ref={artboardFrameRef}
-              className="rounded-sm shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
+              className="relative rounded-sm shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
               style={{ lineHeight: 0 }}
             >
               <canvas ref={canvasElRef} className="block max-w-none" />
+              {ready &&
+              (artboardSnapGuides.vertical || artboardSnapGuides.horizontal) ? (
+                <div
+                  className="pointer-events-none absolute inset-0 z-[5]"
+                  aria-hidden
+                >
+                  {artboardSnapGuides.vertical ? (
+                    <div
+                      className="absolute bottom-0 left-1/2 top-0 w-px -translate-x-1/2"
+                      style={{ backgroundColor: EDITOR_ACCENT_PURPLE }}
+                    />
+                  ) : null}
+                  {artboardSnapGuides.horizontal ? (
+                    <div
+                      className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2"
+                      style={{ backgroundColor: EDITOR_ACCENT_PURPLE }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
 
-        {ready && fitZoomPercent !== null ? (
-          <div className="pointer-events-none absolute bottom-4 right-5 text-xs tabular-nums text-[var(--text-muted)]">
-            {ARTBOARD_W}×{ARTBOARD_H}px · {fitZoomPercent}%
-          </div>
-        ) : null}
+        <div
+          ref={canvasZoomRef}
+          className="pointer-events-auto absolute bottom-4 right-5 z-10 flex flex-col items-end gap-1"
+        >
+          {ready && zoomPercent !== null ? (
+            <>
+              <CanvasZoomSlider
+                value={zoomPercent}
+                min={ZOOM_MIN_PCT}
+                max={ZOOM_MAX_PCT}
+                onChange={onZoomSliderChange}
+                onFitRequest={onZoomFitRequest}
+              />
+              <div className="pr-1 text-xs tabular-nums text-[var(--text-muted)]">
+                {ARTBOARD_W}×{ARTBOARD_H}px
+              </div>
+            </>
+          ) : null}
+        </div>
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center pb-5 pt-24">
