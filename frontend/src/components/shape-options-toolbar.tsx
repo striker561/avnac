@@ -7,7 +7,7 @@ import {
   StraightEdgeIcon,
   Tick02Icon,
 } from '@hugeicons/core-free-icons'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   useStablePickPanel,
   useViewportAwarePopoverPlacement,
@@ -25,6 +25,7 @@ import {
   floatingToolbarIconButton,
   floatingToolbarPopoverClass,
 } from './floating-toolbar-shell'
+import EditorRangeSlider from './editor-range-slider'
 import PaintPopoverControl from './paint-popover-control'
 
 type Props = {
@@ -37,6 +38,7 @@ type Props = {
   onArrowRoundedEnds: (rounded: boolean) => void
   onArrowStrokeWidth: (w: number) => void
   onArrowPathType: (pathType: ArrowPathType) => void
+  footerSlot?: ReactNode
 }
 
 function smallLabel(className = '') {
@@ -79,6 +81,7 @@ export default function ShapeOptionsToolbar({
   onArrowRoundedEnds,
   onArrowStrokeWidth,
   onArrowPathType,
+  footerSlot,
 }: Props) {
   const [strokePanelOpen, setStrokePanelOpen] = useState(false)
   const [lineTypePanelOpen, setLineTypePanelOpen] = useState(false)
@@ -123,6 +126,12 @@ export default function ShapeOptionsToolbar({
             title="Fill color and gradient"
             ariaLabel="Fill color and gradient"
           />
+          {footerSlot ? (
+            <>
+              <FloatingToolbarDivider />
+              {footerSlot}
+            </>
+          ) : null}
         </div>
       </FloatingToolbarShell>
     )
@@ -139,6 +148,12 @@ export default function ShapeOptionsToolbar({
             title="Stroke color and gradient"
             ariaLabel="Stroke color and gradient"
           />
+          {footerSlot ? (
+            <>
+              <FloatingToolbarDivider />
+              {footerSlot}
+            </>
+          ) : null}
         </div>
       </FloatingToolbarShell>
     )
@@ -169,15 +184,20 @@ export default function ShapeOptionsToolbar({
             }}
             className="w-12 rounded-md border border-black/12 bg-neutral-50 px-1.5 py-0.5 text-center text-xs tabular-nums text-neutral-900 outline-none focus:border-black/25"
           />
-          <input
-            type="range"
+          <EditorRangeSlider
             min={3}
             max={16}
             value={Math.min(16, sides)}
-            onChange={(e) => onPolygonSides(Number(e.target.value))}
-            className="w-24 accent-neutral-900"
+            onChange={onPolygonSides}
             aria-label="Polygon sides"
+            trackClassName="w-24"
           />
+          {footerSlot ? (
+            <>
+              <FloatingToolbarDivider />
+              {footerSlot}
+            </>
+          ) : null}
         </div>
       </FloatingToolbarShell>
     )
@@ -208,15 +228,20 @@ export default function ShapeOptionsToolbar({
             }}
             className="w-12 rounded-md border border-black/12 bg-neutral-50 px-1.5 py-0.5 text-center text-xs tabular-nums text-neutral-900 outline-none focus:border-black/25"
           />
-          <input
-            type="range"
+          <EditorRangeSlider
             min={3}
             max={12}
             value={Math.min(12, pts)}
-            onChange={(e) => onStarPoints(Number(e.target.value))}
-            className="w-24 accent-neutral-900"
+            onChange={onStarPoints}
             aria-label="Star points"
+            trackClassName="w-24"
           />
+          {footerSlot ? (
+            <>
+              <FloatingToolbarDivider />
+              {footerSlot}
+            </>
+          ) : null}
         </div>
       </FloatingToolbarShell>
     )
@@ -300,6 +325,12 @@ export default function ShapeOptionsToolbar({
                 className={`transition-transform ${strokePanelOpen ? 'rotate-180' : ''}`}
               />
             </button>
+            {footerSlot ? (
+              <>
+                <FloatingToolbarDivider />
+                {footerSlot}
+              </>
+            ) : null}
           </div>
         </FloatingToolbarShell>
 
@@ -427,14 +458,13 @@ export default function ShapeOptionsToolbar({
                 Stroke weight
               </span>
               <div className="flex items-center gap-2">
-                <input
-                  type="range"
+                <EditorRangeSlider
                   min={1}
                   max={80}
                   value={strokeW}
-                  onChange={(e) => onArrowStrokeWidth(Number(e.target.value))}
-                  className="h-1.5 flex-1 accent-neutral-900"
+                  onChange={onArrowStrokeWidth}
                   aria-label="Stroke weight"
+                  trackClassName="min-w-0 flex-1"
                 />
                 <input
                   type="number"
