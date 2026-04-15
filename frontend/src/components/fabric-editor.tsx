@@ -60,6 +60,11 @@ import {
   fitTextboxWidthToContent,
   textboxUsesAutoWidth,
 } from '../lib/avnac-textbox-autowidth'
+import {
+  computeTransformDimensionUi,
+  TRANSFORM_DIMENSION_END_ACTIONS,
+  type TransformDimensionUi,
+} from '../lib/fabric-transform-dimension-ui'
 import { linearGradientForBox } from '../lib/fabric-linear-gradient'
 import { loadGoogleFontFamily } from '../lib/load-google-font'
 import ShapeOptionsToolbar from './shape-options-toolbar'
@@ -238,6 +243,8 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     top: number
     placement: 'above' | 'below'
   } | null>(null)
+  const [transformDimensionUi, setTransformDimensionUi] =
+    useState<TransformDimensionUi | null>(null)
 
   const backgroundPopoverAnchorRef = useRef<HTMLDivElement>(null)
   const backgroundPopoverPanelRef = useRef<HTMLDivElement>(null)
@@ -893,6 +900,50 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       canvas.off('text:editing:exited', ed)
     }
   }, [ready, updateElementToolbarLayout])
+
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || !ready) return
+
+    const updateTransformDimensionOverlay = () => {
+      const frame = artboardFrameRef.current
+      const cluster = artboardClusterRef.current
+      if (!frame || !cluster) return
+      const target = canvas.getActiveObject()
+      if (!target) {
+        setTransformDimensionUi(null)
+        return
+      }
+      if ('isEditing' in target && (target as IText).isEditing) {
+        setTransformDimensionUi(null)
+        return
+      }
+      const ui = computeTransformDimensionUi(canvas, frame, cluster, target)
+      setTransformDimensionUi(ui)
+    }
+
+    const onModified = (opt: { action?: string }) => {
+      if (opt.action && TRANSFORM_DIMENSION_END_ACTIONS.has(opt.action)) {
+        setTransformDimensionUi(null)
+      }
+    }
+
+    const hideOverlay = () => setTransformDimensionUi(null)
+
+    canvas.on('object:scaling', updateTransformDimensionOverlay)
+    canvas.on('object:resizing', updateTransformDimensionOverlay)
+    canvas.on('object:skewing', updateTransformDimensionOverlay)
+    canvas.on('object:modified', onModified)
+    canvas.on('selection:cleared', hideOverlay)
+
+    return () => {
+      canvas.off('object:scaling', updateTransformDimensionOverlay)
+      canvas.off('object:resizing', updateTransformDimensionOverlay)
+      canvas.off('object:skewing', updateTransformDimensionOverlay)
+      canvas.off('object:modified', onModified)
+      canvas.off('selection:cleared', hideOverlay)
+    }
+  }, [ready])
 
   useEffect(() => {
     if (!shapesPopoverOpen) return
@@ -1752,6 +1803,19 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
                 </div>
               ) : null}
             </div>
+            {ready && transformDimensionUi ? (
+              <div
+                className="pointer-events-none absolute z-[25] rounded-md bg-neutral-900 px-2 py-1 text-[11px] font-medium leading-5 tabular-nums text-white shadow-md"
+                style={{
+                  left: transformDimensionUi.left,
+                  top: transformDimensionUi.top,
+                }}
+                role="status"
+                aria-live="polite"
+              >
+                {transformDimensionUi.text}
+              </div>
+            ) : null}
           </div>
         </div>
 
