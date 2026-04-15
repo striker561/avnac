@@ -19,30 +19,25 @@ export type TransformDimensionUi = {
 }
 
 /**
- * Positions are in CSS pixels relative to `position: relative` clusterEl (same space as
- * the floating element toolbar). Width/height are Fabric scene units (artboard space);
- * they do not change when only the canvas CSS size / zoom percentage changes.
+ * Positions are viewport (`position: fixed`) CSS pixels so the chip is not clipped by
+ * overflow on the scroll container. Width/height are Fabric scene units (artboard space).
  */
 export function computeTransformDimensionUi(
   canvas: Canvas,
   frameEl: HTMLElement,
-  clusterEl: HTMLElement,
   target: FabricObject,
 ): TransformDimensionUi | null {
   const br = target.getBoundingRect()
   const cw = canvas.getWidth()
   const ch = canvas.getHeight()
-  const fw = frameEl.offsetWidth
-  const fh = frameEl.offsetHeight
-  if (cw <= 0 || ch <= 0 || fw <= 0 || fh <= 0) return null
-  const sx = fw / cw
-  const sy = fh / ch
+  const fr = frameEl.getBoundingClientRect()
+  if (cw <= 0 || ch <= 0 || fr.width <= 0 || fr.height <= 0) return null
+  const sx = fr.width / cw
+  const sy = fr.height / ch
   const wPx = Math.round(br.width)
   const hPx = Math.round(br.height)
-  const ox = frameEl.offsetLeft
-  const oy = frameEl.offsetTop
-  const anchorLeft = ox + (br.left + br.width) * sx + 8
-  const anchorTop = oy + (br.top + br.height) * sy + 8
+  const anchorLeft = fr.left + (br.left + br.width) * sx + 8
+  const anchorTop = fr.top + (br.top + br.height) * sy + 8
   return {
     left: anchorLeft,
     top: anchorTop,
