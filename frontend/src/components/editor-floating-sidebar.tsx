@@ -2,9 +2,10 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   CloudUploadIcon,
   Layers02Icon,
+  PenTool01Icon,
 } from '@hugeicons/core-free-icons'
 
-export type EditorSidebarPanelId = 'layers' | 'uploads'
+export type EditorSidebarPanelId = 'layers' | 'uploads' | 'vector-board'
 
 const ITEMS: {
   id: EditorSidebarPanelId
@@ -13,6 +14,7 @@ const ITEMS: {
 }[] = [
   { id: 'layers', label: 'Layers', icon: Layers02Icon },
   { id: 'uploads', label: 'Uploads', icon: CloudUploadIcon },
+  { id: 'vector-board', label: 'Vectors', icon: PenTool01Icon },
 ]
 
 type Props = {
@@ -31,7 +33,7 @@ export default function EditorFloatingSidebar({
       data-avnac-chrome
       aria-label="Editor tools"
       className={[
-        'pointer-events-auto fixed left-3 top-16 z-[45] flex flex-col gap-0.5 rounded-3xl border border-black/[0.08] bg-neutral-100/95 p-1.5 backdrop-blur-md',
+        'pointer-events-auto fixed left-3 top-[calc(0.75rem+2.5rem+0.75rem+1px+0.75rem)] z-[45] flex flex-col gap-0.5 rounded-3xl border border-black/[0.08] bg-neutral-100/95 p-1.5 backdrop-blur-md sm:top-[calc(0.875rem+2.5rem+0.875rem+1px+0.75rem)]',
         disabled ? 'pointer-events-none opacity-40' : '',
       ]
         .filter(Boolean)
