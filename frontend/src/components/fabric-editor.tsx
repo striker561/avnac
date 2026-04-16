@@ -17,6 +17,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type DragEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useViewportAwarePopoverPlacement } from '../hooks/use-viewport-aware-popover'
@@ -27,6 +28,26 @@ import {
   type AvnacDocumentV1,
 } from '../lib/avnac-document'
 import { idbGetDocument, idbPutDocument } from '../lib/avnac-editor-idb'
+import {
+  loadVectorBoardDocs,
+  loadVectorBoards,
+  mergeVectorBoardDocsForMeta,
+  saveVectorBoardDocs,
+  saveVectorBoards,
+  type AvnacVectorBoardMeta,
+} from '../lib/avnac-vector-boards-storage'
+import {
+  emptyVectorBoardDocument,
+  AVNAC_VECTOR_BOARD_DRAG_MIME,
+  vectorDocHasRenderableStrokes,
+  type VectorBoardDocument,
+} from '../lib/avnac-vector-board-document'
+import {
+  createVectorBoardFabricGroup,
+  detachAvnacVectorBoardLink,
+  refreshAllVectorBoardInstances,
+  syncVectorBoardInstancesToDoc,
+} from '../lib/avnac-vector-board-fabric'
 import { installSceneSnap, type SceneSnapGuide } from '../lib/fabric-scene-snap'
 import { removeActiveObjectFromCanvas } from '../lib/fabric-remove-selection'
 import {
@@ -146,6 +167,8 @@ import EditorLayersPanel, {
 } from './editor-layers-panel'
 import EditorShortcutsModal from './editor-shortcuts-modal'
 import EditorUploadsPanel from './editor-uploads-panel'
+import EditorVectorBoardPanel from './editor-vector-board-panel'
+import VectorBoardWorkspace from './vector-board-workspace'
 
 const DEFAULT_ARTBOARD_W = 4000
 const DEFAULT_ARTBOARD_H = 4000
@@ -161,6 +184,7 @@ const OBJECT_SERIAL_KEYS = [
   'avnacFill',
   'avnacStroke',
   'avnacLayerId',
+  'avnacVectorBoardId',
 ] as const
 
 const DEFAULT_PAINT: BgValue = { type: 'solid', color: '#262626' }
@@ -394,6 +418,14 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   const [artboardEmptyHovered, setArtboardEmptyHovered] = useState(false)
   const [editorSidebarPanel, setEditorSidebarPanel] =
     useState<EditorSidebarPanelId | null>(null)
+  const [vectorBoards, setVectorBoards] = useState<AvnacVectorBoardMeta[]>([])
+  const [vectorBoardDocs, setVectorBoardDocs] = useState<
+    Record<string, VectorBoardDocument>
+  >({})
+  const vectorBoardDocsRef = useRef(vectorBoardDocs)
+  vectorBoardDocsRef.current = vectorBoardDocs
+  const [vectorBoardListReady, setVectorBoardListReady] = useState(false)
+  const [vectorWorkspaceId, setVectorWorkspaceId] = useState<string | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [elementToolbarLayout, setElementToolbarLayout] = useState<{
     left: number
@@ -1026,6 +1058,29 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     [syncTextToolbar, syncShapeToolbar],
   )
 
+  const applyCanvasZoomRef = useRef(applyCanvasZoom)
+  applyCanvasZoomRef.current = applyCanvasZoom
+
+  useEffect(() => {
+    if (!ready) return
+    const vp = viewportRef.current
+    if (!vp) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      zoomUserAdjustedRef.current = true
+      const current = zoomPercentRef.current ?? 100
+      let dy = e.deltaY
+      if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) dy *= 16
+      else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE)
+        dy *= Math.max(120, vp.clientHeight * 0.85)
+      const deltaPct = -dy * 0.12
+      applyCanvasZoomRef.current(current + deltaPct)
+    }
+    vp.addEventListener('wheel', onWheel, { passive: false })
+    return () => vp.removeEventListener('wheel', onWheel)
+  }, [ready])
+
   const fitArtboardToViewport = useCallback(() => {
     const canvas = fabricCanvasRef.current
     const viewport = viewportRef.current
@@ -1357,10 +1412,16 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
           const clearLock = (o: FabricObject) => {
             if (getAvnacLocked(o)) setAvnacLocked(o, false, mod)
           }
+          const detachVb = (o: FabricObject) =>
+            detachAvnacVectorBoardLink(o, mod)
           if (mod.ActiveSelection && dup instanceof mod.ActiveSelection) {
-            dup.getObjects().forEach(clearLock)
+            dup.getObjects().forEach((o) => {
+              clearLock(o)
+              detachVb(o)
+            })
           } else {
             clearLock(dup as FabricObject)
+            detachVb(dup as FabricObject)
           }
           renewAvnacLayerId(dup as FabricObject)
           cnv.add(dup)
@@ -2116,10 +2177,15 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     const clearLock = (o: FabricObject) => {
       if (getAvnacLocked(o)) setAvnacLocked(o, false, mod)
     }
+    const detachVb = (o: FabricObject) => detachAvnacVectorBoardLink(o, mod)
     if (mod.ActiveSelection && dup instanceof mod.ActiveSelection) {
-      dup.getObjects().forEach(clearLock)
+      dup.getObjects().forEach((o) => {
+        clearLock(o)
+        detachVb(o)
+      })
     } else {
       clearLock(dup as FabricObject)
+      detachVb(dup as FabricObject)
     }
     renewAvnacLayerId(dup as FabricObject)
     canvas.discardActiveObject()
@@ -2194,6 +2260,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         top: (o.top ?? 0) + dy,
       })
       renewAvnacLayerId(o)
+      detachAvnacVectorBoardLink(o, mod)
       canvas.add(o)
     })
     canvas.discardActiveObject()
@@ -2421,6 +2488,12 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         selectionTick()
         syncTextToolbar()
         syncShapeToolbar()
+        queueMicrotask(() => {
+          const c = fabricCanvasRef.current
+          const m = fabricModRef.current
+          if (!c || !m) return
+          refreshAllVectorBoardInstances(c, m, vectorBoardDocsRef.current)
+        })
       } finally {
         applyingHistoryRef.current = false
       }
@@ -2491,6 +2564,122 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     scheduleIdbAutosave()
   }, [applyDoc, scheduleIdbAutosave])
 
+  const createVectorBoard = useCallback(() => {
+    const id = crypto.randomUUID()
+    setVectorBoards((prev) => {
+      const n = prev.length + 1
+      return [
+        ...prev,
+        { id, name: `Vector board ${n}`, createdAt: Date.now() },
+      ]
+    })
+    setVectorBoardDocs((prev) => {
+      const next = { ...prev, [id]: emptyVectorBoardDocument() }
+      vectorBoardDocsRef.current = next
+      return next
+    })
+    setVectorWorkspaceId(id)
+  }, [])
+
+  const placeVectorBoardOnCanvas = useCallback(
+    (boardId: string, sceneX: number, sceneY: number) => {
+      const canvas = fabricCanvasRef.current
+      const mod = fabricModRef.current
+      if (!canvas || !mod) return
+      const doc = vectorBoardDocsRef.current[boardId]
+      if (!doc || !vectorDocHasRenderableStrokes(doc)) return
+      const group = createVectorBoardFabricGroup(mod, doc, boardId)
+      ensureAvnacLayerId(group)
+      group.set({
+        left: sceneX,
+        top: sceneY,
+        originX: 'center',
+        originY: 'center',
+      })
+      group.setCoords()
+      canvas.discardActiveObject()
+      canvas.add(group)
+      canvas.setActiveObject(group)
+      canvas.requestRenderAll()
+      selectionTick()
+      persistAfterMutation(canvas, group)
+    },
+    [persistAfterMutation],
+  )
+
+  const placeActiveVectorBoardAtArtboardCenter = useCallback(() => {
+    if (!vectorWorkspaceId) return
+    const doc = vectorBoardDocsRef.current[vectorWorkspaceId]
+    if (!doc || !vectorDocHasRenderableStrokes(doc)) return
+    placeVectorBoardOnCanvas(
+      vectorWorkspaceId,
+      artboardWRef.current / 2,
+      artboardHRef.current / 2,
+    )
+  }, [placeVectorBoardOnCanvas, vectorWorkspaceId])
+
+  const onVectorBoardDocumentChange = useCallback(
+    (boardId: string, doc: VectorBoardDocument) => {
+      setVectorBoardDocs((prev) => {
+        const next = { ...prev, [boardId]: doc }
+        vectorBoardDocsRef.current = next
+        return next
+      })
+      queueMicrotask(() => {
+        const canvas = fabricCanvasRef.current
+        const mod = fabricModRef.current
+        if (!canvas || !mod) return
+        syncVectorBoardInstancesToDoc(canvas, mod, boardId, doc)
+        for (const o of canvas.getObjects()) {
+          if (!(o instanceof mod.Group)) continue
+          const wid = (
+            o as FabricObject & { avnacVectorBoardId?: string }
+          ).avnacVectorBoardId
+          if (wid === boardId) {
+            canvas.fire('object:modified', { target: o })
+          }
+        }
+        canvas.requestRenderAll()
+      })
+    },
+    [],
+  )
+
+  const onVectorBoardDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const onVectorBoardDrop = useCallback(
+    (e: DragEvent) => {
+      e.preventDefault()
+      const boardId = e.dataTransfer.getData(AVNAC_VECTOR_BOARD_DRAG_MIME)
+      if (!boardId) return
+      const canvas = fabricCanvasRef.current
+      const mod = fabricModRef.current
+      if (!canvas || !mod) return
+      const p = canvas.getScenePoint(e.nativeEvent)
+      placeVectorBoardOnCanvas(boardId, p.x, p.y)
+    },
+    [placeVectorBoardOnCanvas],
+  )
+
+  const openVectorBoardWorkspace = useCallback((id: string) => {
+    setVectorWorkspaceId(id)
+  }, [])
+
+  const closeVectorWorkspace = useCallback(() => {
+    setVectorWorkspaceId(null)
+  }, [])
+
+  const vectorWorkspaceName = useMemo(() => {
+    if (!vectorWorkspaceId) return ''
+    return (
+      vectorBoards.find((b) => b.id === vectorWorkspaceId)?.name ??
+      'Vector board'
+    )
+  }, [vectorBoards, vectorWorkspaceId])
+
   useEffect(() => {
     if (!ready) return
 
@@ -2529,6 +2718,34 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       cancelled = true
     }
   }, [ready, persistId, scheduleIdbAutosave])
+
+  useEffect(() => {
+    setVectorWorkspaceId(null)
+    setVectorBoardListReady(false)
+    if (!persistId) {
+      setVectorBoards([])
+      setVectorBoardDocs({})
+      setVectorBoardListReady(true)
+      return
+    }
+    const boards = loadVectorBoards(persistId)
+    const docs = loadVectorBoardDocs(persistId)
+    const merged = mergeVectorBoardDocsForMeta(boards, docs)
+    vectorBoardDocsRef.current = merged
+    setVectorBoards(boards)
+    setVectorBoardDocs(merged)
+    setVectorBoardListReady(true)
+  }, [persistId])
+
+  useEffect(() => {
+    if (!persistId || !vectorBoardListReady) return
+    saveVectorBoards(persistId, vectorBoards)
+  }, [persistId, vectorBoards, vectorBoardListReady])
+
+  useEffect(() => {
+    if (!persistId || !vectorBoardListReady) return
+    saveVectorBoardDocs(persistId, vectorBoardDocs)
+  }, [persistId, vectorBoardDocs, vectorBoardListReady])
 
   useEffect(() => {
     return () => {
@@ -3121,6 +3338,8 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       <div
         ref={viewportRef}
         className="relative flex min-h-0 flex-1 flex-col overflow-auto rounded-2xl bg-[var(--surface-subtle)]"
+        onDragOver={ready ? onVectorBoardDragOver : undefined}
+        onDrop={ready ? onVectorBoardDrop : undefined}
       >
         <div className="flex min-h-min w-full flex-1 flex-col items-center justify-center px-4 pb-4 pt-0 sm:px-6 sm:pb-6 sm:pt-1">
           <div
@@ -3347,6 +3566,28 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         open={ready && editorSidebarPanel === 'uploads'}
         onClose={() => setEditorSidebarPanel(null)}
       />
+      <EditorVectorBoardPanel
+        open={ready && editorSidebarPanel === 'vector-board'}
+        onClose={() => setEditorSidebarPanel(null)}
+        boards={vectorBoards}
+        onCreateNew={createVectorBoard}
+        onOpenBoard={openVectorBoardWorkspace}
+      />
+      {vectorWorkspaceId ? (
+        <VectorBoardWorkspace
+          open
+          boardId={vectorWorkspaceId}
+          boardName={vectorWorkspaceName}
+          document={
+            vectorBoardDocs[vectorWorkspaceId] ?? emptyVectorBoardDocument()
+          }
+          onDocumentChange={(doc) =>
+            onVectorBoardDocumentChange(vectorWorkspaceId, doc)
+          }
+          onRequestPlaceOnCanvas={placeActiveVectorBoardAtArtboardCenter}
+          onClose={closeVectorWorkspace}
+        />
+      ) : null}
       <EditorShortcutsModal
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
