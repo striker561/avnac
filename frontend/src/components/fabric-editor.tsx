@@ -111,6 +111,7 @@ import BackgroundPopover, {
   bgValueToSwatch,
   type BgValue,
 } from './background-popover'
+import ArtboardResizeToolbarControl from './artboard-resize-toolbar-control'
 import BlurToolbarControl from './blur-toolbar-control'
 import CornerRadiusToolbarControl from './corner-radius-toolbar-control'
 import CanvasZoomSlider from './canvas-zoom-slider'
@@ -2450,6 +2451,25 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     [commitHistory],
   )
 
+  const onArtboardResize = useCallback(
+    (w: number, h: number) => {
+      const W = Math.min(16000, Math.max(100, Math.round(w)))
+      const H = Math.min(16000, Math.max(100, Math.round(h)))
+      let changed = false
+      setArtboardSize((prev) => {
+        if (prev.w === W && prev.h === H) return prev
+        changed = true
+        return { w: W, h: H }
+      })
+      if (changed) {
+        queueMicrotask(() => {
+          if (!applyingHistoryRef.current) commitHistory()
+        })
+      }
+    },
+    [commitHistory],
+  )
+
   const layerRows: EditorLayerRow[] = useMemo(() => {
     const c = fabricCanvasRef.current
     const mod = fabricModRef.current
@@ -2711,6 +2731,12 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         canvasBodySelected ? (
           <div ref={backgroundPopoverAnchorRef} className="relative">
             <div className="flex items-center rounded-full border border-black/[0.08] bg-white/90 px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.08)] backdrop-blur-md">
+              <ArtboardResizeToolbarControl
+                width={artboardW}
+                height={artboardH}
+                onResize={onArtboardResize}
+              />
+              <FloatingToolbarDivider />
               <button
                 type="button"
                 className={backgroundTopBtn(false)}
