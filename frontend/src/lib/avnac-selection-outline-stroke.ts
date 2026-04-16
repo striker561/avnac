@@ -5,6 +5,7 @@ export function fabricObjectSupportsOutlineStroke(
   o: FabricObject,
   mod: typeof import('fabric'),
 ): boolean {
+  if (mod.FabricImage && o instanceof mod.FabricImage) return false
   if (o instanceof mod.Line) return false
   const meta = getAvnacShapeMeta(o)
   if (o instanceof mod.Group && isAvnacStrokeLineLike(meta)) return false
