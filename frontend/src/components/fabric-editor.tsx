@@ -91,6 +91,7 @@ import {
   readBlurPctFromFabricObject,
 } from '../lib/avnac-object-blur'
 import { linearGradientForBox } from '../lib/fabric-linear-gradient'
+import { loadCanvasGoogleFontsAndRelayout } from '../lib/avnac-canvas-google-fonts'
 import { loadGoogleFontFamily } from '../lib/load-google-font'
 import ShapeOptionsToolbar from './shape-options-toolbar'
 import TransparencyToolbarPopover from './transparency-toolbar-popover'
@@ -1856,6 +1857,11 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     selectionTick()
     syncTextToolbar()
     syncShapeToolbar()
+    try {
+      await loadCanvasGoogleFontsAndRelayout(canvas, mod)
+    } catch (err) {
+      console.error('FabricEditor: font reload after paste failed', err)
+    }
   }, [syncShapeToolbar, syncTextToolbar])
 
   const alignElementToArtboard = useCallback((kind: CanvasAlignKind) => {
@@ -2027,6 +2033,11 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
           migrateLegacyImageBlurFilters(canvas, mod)
         } catch (err) {
           console.error('FabricEditor: legacy blur migration failed', err)
+        }
+        try {
+          await loadCanvasGoogleFontsAndRelayout(canvas, mod)
+        } catch (err) {
+          console.error('FabricEditor: font reload failed', err)
         }
         const z = zoomPercentRef.current ?? 100
         const s = z / 100
@@ -2743,7 +2754,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
 
         <div
           ref={canvasZoomRef}
-          className="pointer-events-auto absolute bottom-4 right-5 z-10 flex flex-col items-end gap-1"
+          className="pointer-events-auto fixed bottom-24 right-4 z-30 flex flex-col items-end gap-1 sm:right-6"
         >
           {ready && zoomPercent !== null ? (
             <>
