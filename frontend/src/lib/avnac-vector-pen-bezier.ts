@@ -37,12 +37,14 @@ function cubicSample(
 export function samplePenAnchorsToPolyline(
   anchors: VectorPenAnchor[],
   stepsPerSegment = 20,
+  closed = false,
 ): [number, number][] {
   if (anchors.length < 2) return []
   const out: [number, number][] = []
-  for (let i = 0; i < anchors.length - 1; i++) {
+  const segCount = closed ? anchors.length : anchors.length - 1
+  for (let i = 0; i < segCount; i++) {
     const a = anchors[i]!
-    const b = anchors[i + 1]!
+    const b = anchors[(i + 1) % anchors.length]!
     const p0: [number, number] = [a.x, a.y]
     const p1 = ctrlOutAbs(a)
     const p2 = ctrlInAbs(b)
@@ -53,26 +55,33 @@ export function samplePenAnchorsToPolyline(
       out.push(cubicSample(t, p0, p1, p2, p3))
     }
   }
-  const last = anchors[anchors.length - 1]!
-  out.push([last.x, last.y])
+  if (!closed) {
+    const last = anchors[anchors.length - 1]!
+    out.push([last.x, last.y])
+  }
   return out
 }
 
 export function penAnchorsToFabricCommands(
   anchors: VectorPenAnchor[],
   scale: number,
+  closed = false,
 ): [string, ...number[]][] | null {
   if (anchors.length < 2) return null
   const S = scale
   const cmds: [string, ...number[]][] = [
     ['M', anchors[0]!.x * S, anchors[0]!.y * S],
   ]
-  for (let i = 0; i < anchors.length - 1; i++) {
+  const segCount = closed ? anchors.length : anchors.length - 1
+  for (let i = 0; i < segCount; i++) {
     const a = anchors[i]!
-    const b = anchors[i + 1]!
+    const b = anchors[(i + 1) % anchors.length]!
     const [ox, oy] = ctrlOutAbs(a)
     const [ix, iy] = ctrlInAbs(b)
     cmds.push(['C', ox * S, oy * S, ix * S, iy * S, b.x * S, b.y * S])
+  }
+  if (closed) {
+    cmds.push(['Z'])
   }
   return cmds
 }
