@@ -10,7 +10,10 @@ import {
 import { Reorder, useDragControls } from 'motion/react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useCallback } from 'react'
-import { editorSidebarPanelTopClass } from '../lib/editor-sidebar-panel-layout'
+import {
+  editorSidebarPanelLeftClass,
+  editorSidebarPanelTopClass,
+} from '../lib/editor-sidebar-panel-layout'
 
 export type EditorLayerRow = {
   id: string
@@ -205,7 +208,8 @@ export default function EditorLayersPanel({
     <div
       data-avnac-chrome
       className={[
-        'pointer-events-auto fixed left-[5.75rem] z-40 flex w-[min(100vw-1.5rem,280px)] flex-col overflow-hidden rounded-3xl border border-black/[0.08] bg-white/95 backdrop-blur-md',
+        'pointer-events-auto fixed z-40 flex w-[min(100vw-1.5rem,280px)] flex-col overflow-hidden rounded-3xl border border-black/[0.08] bg-white/95 backdrop-blur-md',
+        editorSidebarPanelLeftClass,
         editorSidebarPanelTopClass,
       ].join(' ')}
       role="dialog"
