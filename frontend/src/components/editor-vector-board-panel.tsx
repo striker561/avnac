@@ -1,5 +1,5 @@
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon, Cancel01Icon } from '@hugeicons/core-free-icons'
+import { Add01Icon, Cancel01Icon, Delete02Icon } from '@hugeicons/core-free-icons'
 import {
   AVNAC_VECTOR_BOARD_DRAG_MIME,
   emptyVectorBoardDocument,
@@ -20,6 +20,7 @@ type Props = {
   boardDocs: Record<string, VectorBoardDocument>
   onCreateNew: () => void
   onOpenBoard: (id: string) => void
+  onDeleteBoard: (id: string) => void
 }
 
 export default function EditorVectorBoardPanel({
@@ -29,6 +30,7 @@ export default function EditorVectorBoardPanel({
   boardDocs,
   onCreateNew,
   onOpenBoard,
+  onDeleteBoard,
 }: Props) {
   if (!open) return null
 
@@ -59,7 +61,7 @@ export default function EditorVectorBoardPanel({
       <div className="flex max-h-[min(50vh,360px)] flex-col gap-2 overflow-auto p-2">
         {boards.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-neutral-500">
-            No vector boards yet. Create one to work on a larger canvas.
+            No vector boards yet.
           </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
@@ -102,6 +104,18 @@ export default function EditorVectorBoardPanel({
                       <span className="mt-0.5 block text-[11px] text-neutral-500">
                         {hasContent ? 'Click to edit · drag preview to place' : 'Click to edit'}
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                      title="Delete vector board"
+                      aria-label={`Delete ${b.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDeleteBoard(b.id)
+                      }}
+                    >
+                      <HugeiconsIcon icon={Delete02Icon} size={18} strokeWidth={1.75} />
                     </button>
                   </div>
                 </li>
