@@ -2,6 +2,7 @@ import type { Canvas, FabricObject, Group, Path } from 'fabric'
 import { penAnchorsToFabricCommands } from './avnac-vector-pen-bezier'
 import {
   flattenVisibleStrokes,
+  vectorStrokeOutlineIsVisible,
   type VectorBoardDocument,
   type VectorBoardStroke,
 } from './avnac-vector-board-document'
@@ -161,9 +162,9 @@ function buildStrokePaths(mod: FabricMod, doc: VectorBoardDocument): Path[] {
   for (const s of flattenVisibleStrokes(doc)) {
     const cmds = strokeToPathCommands(s)
     if (!cmds) continue
-    const hasStroke = Boolean(s.stroke) && s.stroke !== 'transparent'
+    const hasStroke = vectorStrokeOutlineIsVisible(s)
     const sw = hasStroke
-      ? Math.max(0.75, s.strokeWidthN * FABRIC_PATH_SCALE)
+      ? Math.max(0, s.strokeWidthN * FABRIC_PATH_SCALE)
       : 0
     const fill =
       s.fill && s.fill.length > 0 && s.fill !== 'transparent'
@@ -195,17 +196,63 @@ export function createVectorBoardFabricGroup(
   return g
 }
 
+function snapshotVectorBoardGroupLayout(group: Group) {
+  return {
+    left: group.left,
+    top: group.top,
+    angle: group.angle,
+    skewX: group.skewX,
+    skewY: group.skewY,
+    flipX: group.flipX,
+    flipY: group.flipY,
+    originX: group.originX,
+    originY: group.originY,
+    /** Transformed size before child swap (used to re-derive scale after layout). */
+    scaledW: group.getScaledWidth(),
+    scaledH: group.getScaledHeight(),
+  }
+}
+
+function applyVectorBoardGroupLayoutAfterContentChange(
+  group: Group,
+  layout: ReturnType<typeof snapshotVectorBoardGroupLayout>,
+): void {
+  group.setCoords()
+  const iw = Math.max(Math.abs(group.width), 1e-6)
+  const ih = Math.max(Math.abs(group.height), 1e-6)
+  const sx = layout.scaledW / iw
+  const sy = layout.scaledH / ih
+  group.set({
+    left: layout.left,
+    top: layout.top,
+    scaleX: sx,
+    scaleY: sy,
+    angle: layout.angle,
+    skewX: layout.skewX,
+    skewY: layout.skewY,
+    flipX: layout.flipX,
+    flipY: layout.flipY,
+    originX: layout.originX,
+    originY: layout.originY,
+    dirty: true,
+  })
+  group.setCoords()
+}
+
 export function updateVectorBoardFabricGroup(
   group: Group,
   mod: FabricMod,
   doc: VectorBoardDocument,
 ): void {
+  const layout = snapshotVectorBoardGroupLayout(group)
   const paths = buildStrokePaths(mod, doc)
   const prev = group.getObjects()
   if (prev.length) group.remove(...prev)
   if (paths.length) group.add(...paths)
-  group.set('dirty', true)
-  group.setCoords()
+
+  queueMicrotask(() => {
+    applyVectorBoardGroupLayoutAfterContentChange(group, layout)
+  })
 }
 
 export function syncVectorBoardInstancesToDoc(
