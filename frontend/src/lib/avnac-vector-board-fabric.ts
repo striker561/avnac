@@ -32,7 +32,11 @@ function strokeToPathCommands(
 
   if (stroke.kind === 'pen') {
     if (stroke.penAnchors && stroke.penAnchors.length >= 2) {
-      const cmds = penAnchorsToFabricCommands(stroke.penAnchors, S)
+      const cmds = penAnchorsToFabricCommands(
+        stroke.penAnchors,
+        S,
+        stroke.penClosed === true,
+      )
       if (!cmds) return null
       return cmds as unknown as Parameters<Path['_setPath']>[0]
     }
@@ -42,6 +46,9 @@ function strokeToPathCommands(
     for (let i = 1; i < stroke.points.length; i++) {
       const [x, y] = stroke.points[i]!
       cmds.push(['L', x * S, y * S])
+    }
+    if (stroke.penClosed === true && stroke.points.length >= 3) {
+      cmds.push(['Z'])
     }
     return cmds as unknown as Parameters<Path['_setPath']>[0]
   }
