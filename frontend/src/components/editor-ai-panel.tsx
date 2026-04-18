@@ -1,11 +1,11 @@
-import { HugeiconsIcon } from '@hugeicons/react'
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AiMagicIcon,
   Cancel01Icon,
   SentIcon,
   SparklesIcon,
   ToolsIcon,
-} from '@hugeicons/core-free-icons'
+} from "@hugeicons/core-free-icons";
 import {
   useEffect,
   useMemo,
@@ -13,73 +13,74 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-} from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+} from "react";
+import { usePostHog } from "posthog-js/react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   TamboProvider,
   useTambo,
   useTamboThreadInput,
   type ReactTamboThreadMessage,
   type TamboTool,
-} from '@tambo-ai/react'
+} from "@tambo-ai/react";
 import {
   editorSidebarPanelLeftClass,
   editorSidebarPanelTopClass,
-} from '../lib/editor-sidebar-panel-layout'
-import type { AiDesignController } from '../lib/avnac-ai-controller'
-import { buildAvnacTamboTools } from '../lib/avnac-ai-tambo-tools'
-import { pickMagicQuickPrompts } from '../lib/avnac-magic-quick-prompts'
+} from "../lib/editor-sidebar-panel-layout";
+import type { AiDesignController } from "../lib/avnac-ai-controller";
+import { buildAvnacTamboTools } from "../lib/avnac-ai-tambo-tools";
+import { pickMagicQuickPrompts } from "../lib/avnac-magic-quick-prompts";
 
 type Props = {
-  open: boolean
-  onClose: () => void
-  controller: AiDesignController
-}
+  open: boolean;
+  onClose: () => void;
+  controller: AiDesignController;
+};
 
-const USER_KEY_STORAGE = 'avnac-ai-user-key'
+const USER_KEY_STORAGE = "avnac-ai-user-key";
 
 function getStableUserKey(): string {
-  if (typeof window === 'undefined') return 'anonymous'
+  if (typeof window === "undefined") return "anonymous";
   try {
-    const existing = window.localStorage.getItem(USER_KEY_STORAGE)
-    if (existing && existing.length > 0) return existing
+    const existing = window.localStorage.getItem(USER_KEY_STORAGE);
+    if (existing && existing.length > 0) return existing;
     const fresh =
-      typeof crypto?.randomUUID === 'function'
+      typeof crypto?.randomUUID === "function"
         ? crypto.randomUUID()
-        : `u-${Math.random().toString(36).slice(2)}-${Date.now()}`
-    window.localStorage.setItem(USER_KEY_STORAGE, fresh)
-    return fresh
+        : `u-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+    window.localStorage.setItem(USER_KEY_STORAGE, fresh);
+    return fresh;
   } catch {
-    return 'anonymous'
+    return "anonymous";
   }
 }
 
 export default function EditorAiPanel({ open, onClose, controller }: Props) {
-  const controllerRef = useRef<AiDesignController | null>(controller)
+  const controllerRef = useRef<AiDesignController | null>(controller);
   useEffect(() => {
-    controllerRef.current = controller
-  }, [controller])
+    controllerRef.current = controller;
+  }, [controller]);
 
-  const apiKey = import.meta.env.VITE_TAMBO_API_KEY as string | undefined
-  const userKey = useMemo(() => getStableUserKey(), [])
+  const apiKey = import.meta.env.VITE_TAMBO_API_KEY as string | undefined;
+  const userKey = useMemo(() => getStableUserKey(), []);
   const tools = useMemo<TamboTool[]>(
     () => buildAvnacTamboTools(controllerRef),
     [],
-  )
-  const [magicQuickPrompts] = useState(() => pickMagicQuickPrompts())
+  );
+  const [magicQuickPrompts] = useState(() => pickMagicQuickPrompts());
 
-  if (!open) return null
+  if (!open) return null;
 
   return (
     <div
       data-avnac-chrome
       className={[
-        'pointer-events-auto fixed z-40 flex w-[min(100vw-1.5rem,400px)] flex-col overflow-hidden rounded-3xl border border-black/[0.08] bg-white/95 backdrop-blur-md',
-        'bottom-3',
+        "pointer-events-auto fixed z-40 flex w-[min(100vw-1.5rem,400px)] flex-col overflow-hidden rounded-3xl border border-black/[0.08] bg-white/95 backdrop-blur-md",
+        "bottom-3",
         editorSidebarPanelLeftClass,
         editorSidebarPanelTopClass,
-      ].join(' ')}
+      ].join(" ")}
       role="dialog"
       aria-label="Magic"
     >
@@ -118,14 +119,14 @@ export default function EditorAiPanel({ open, onClose, controller }: Props) {
         <MissingKeyPlaceholder />
       )}
     </div>
-  )
+  );
 }
 
 function MissingKeyPlaceholder() {
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 text-sm text-neutral-700">
       <p>
-        Magic uses{' '}
+        Magic uses{" "}
         <a
           className="font-medium underline decoration-dotted underline-offset-2"
           href="https://tambo.co"
@@ -133,7 +134,7 @@ function MissingKeyPlaceholder() {
           rel="noreferrer"
         >
           Tambo
-        </a>{' '}
+        </a>{" "}
         to turn natural-language prompts into real edits on your artboard.
       </p>
       <p>To enable it, add a Tambo API key to your frontend env:</p>
@@ -141,7 +142,7 @@ function MissingKeyPlaceholder() {
         <code>VITE_TAMBO_API_KEY=your-key-here</code>
       </pre>
       <p className="text-[12px] text-neutral-500">
-        Get a free key at{' '}
+        Get a free key at{" "}
         <a
           className="underline decoration-dotted underline-offset-2"
           href="https://tambo.co"
@@ -153,106 +154,109 @@ function MissingKeyPlaceholder() {
         , then restart the dev server.
       </p>
     </div>
-  )
+  );
 }
 
 type AnyContentItem = { type?: string; text?: string; name?: string } & Record<
   string,
   unknown
->
+>;
 
 type MessageLike = {
-  id: string
-  role?: string
-  content: readonly unknown[]
-}
+  id: string;
+  role?: string;
+  content: readonly unknown[];
+};
 
-function orderAssistantContentBlocks(
-  content: readonly unknown[],
-): unknown[] {
-  const toolUse: unknown[] = []
-  const toolResult: unknown[] = []
-  const mid: unknown[] = []
-  const text: unknown[] = []
+function orderAssistantContentBlocks(content: readonly unknown[]): unknown[] {
+  const toolUse: unknown[] = [];
+  const toolResult: unknown[] = [];
+  const mid: unknown[] = [];
+  const text: unknown[] = [];
   for (const c of content) {
-    const typ = (c as AnyContentItem).type
-    if (typ === 'tool_use') toolUse.push(c)
-    else if (typ === 'tool_result') toolResult.push(c)
-    else if (typ === 'text') text.push(c)
-    else mid.push(c)
+    const typ = (c as AnyContentItem).type;
+    if (typ === "tool_use") toolUse.push(c);
+    else if (typ === "tool_result") toolResult.push(c);
+    else if (typ === "text") text.push(c);
+    else mid.push(c);
   }
-  return [...toolUse, ...toolResult, ...mid, ...text]
+  return [...toolUse, ...toolResult, ...mid, ...text];
 }
 
 function groupMessagesForDisplay(
   messages: ReactTamboThreadMessage[],
 ): MessageLike[] {
-  const out: MessageLike[] = []
-  let i = 0
+  const out: MessageLike[] = [];
+  let i = 0;
   while (i < messages.length) {
-    const m = messages[i]!
-    if (m.role === 'user' || m.role === 'system') {
+    const m = messages[i]!;
+    if (m.role === "user" || m.role === "system") {
       out.push({
         id: m.id,
         role: m.role,
         content: m.content as readonly unknown[],
-      })
-      i++
-      continue
+      });
+      i++;
+      continue;
     }
-    const run: ReactTamboThreadMessage[] = []
-    while (i < messages.length && messages[i]!.role === 'assistant') {
-      run.push(messages[i]!)
-      i++
+    const run: ReactTamboThreadMessage[] = [];
+    while (i < messages.length && messages[i]!.role === "assistant") {
+      run.push(messages[i]!);
+      i++;
     }
-    if (run.length === 0) continue
-    const merged = run.flatMap((x) => x.content as unknown[])
+    if (run.length === 0) continue;
+    const merged = run.flatMap((x) => x.content as unknown[]);
     out.push({
-      id: run.map((x) => x.id).join('\u0001'),
-      role: 'assistant',
+      id: run.map((x) => x.id).join("\u0001"),
+      role: "assistant",
       content: orderAssistantContentBlocks(merged),
-    })
+    });
   }
-  return out
+  return out;
 }
 
 function MagicChat({ quickPrompts }: { quickPrompts: string[] }) {
-  const { messages, isStreaming, isWaiting } = useTambo()
-  const { value, setValue, submit, isPending } = useTamboThreadInput()
-  const [error, setError] = useState<string | null>(null)
-  const scrollerRef = useRef<HTMLDivElement>(null)
+  const { messages, isStreaming, isWaiting } = useTambo();
+  const { value, setValue, submit, isPending } = useTamboThreadInput();
+  const [error, setError] = useState<string | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const posthog = usePostHog();
 
   const displayMessages = useMemo(
     () => groupMessagesForDisplay(messages),
     [messages],
-  )
+  );
 
   useEffect(() => {
-    const el = scrollerRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [displayMessages, isStreaming, isWaiting])
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [displayMessages, isStreaming, isWaiting]);
 
   const onSubmit = async (e?: FormEvent) => {
-    e?.preventDefault()
-    if (!value.trim() || isPending || isStreaming) return
-    setError(null)
+    e?.preventDefault();
+    if (!value.trim() || isPending || isStreaming) return;
+    setError(null);
+    posthog.capture("ai_prompt_submitted", {
+      prompt_length: value.trim().length,
+    });
     try {
-      await submit()
+      await submit();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      posthog.captureException(err);
+      setError(err instanceof Error ? err.message : "Something went wrong.");
     }
-  }
+  };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      void onSubmit()
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void onSubmit();
     }
-  }
+  };
 
-  const showEmpty = messages.length === 0 && !isWaiting && !isStreaming
-  const busy = isPending || isStreaming || isWaiting
+  const showEmpty = messages.length === 0 && !isWaiting && !isStreaming;
+  const busy = isPending || isStreaming || isWaiting;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -265,7 +269,7 @@ function MagicChat({ quickPrompts }: { quickPrompts: string[] }) {
           <EmptyState
             prompts={quickPrompts}
             onPick={(p) => {
-              setValue(p)
+              setValue(p);
             }}
           />
         ) : (
@@ -312,21 +316,21 @@ function MagicChat({ quickPrompts }: { quickPrompts: string[] }) {
               className="avnac-ai-accent"
             />
             <span className="avnac-ai-accent">
-              {busy ? 'Working…' : 'Generate'}
+              {busy ? "Working…" : "Generate"}
             </span>
           </button>
         </div>
       </form>
     </div>
-  )
+  );
 }
 
 function EmptyState({
   prompts,
   onPick,
 }: {
-  prompts: string[]
-  onPick: (prompt: string) => void
+  prompts: string[];
+  onPick: (prompt: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -372,7 +376,7 @@ function EmptyState({
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 function ThinkingBubble() {
@@ -385,7 +389,7 @@ function ThinkingBubble() {
       </div>
       <span className="text-[11.5px] text-neutral-500">Thinking…</span>
     </div>
-  )
+  );
 }
 
 function ChatMarkdown({ text }: { text: string }) {
@@ -406,7 +410,7 @@ function ChatMarkdown({ text }: { text: string }) {
             </a>
           ),
           code: ({ className, children, ...rest }) => {
-            const inline = !className
+            const inline = !className;
             if (inline) {
               return (
                 <code
@@ -415,13 +419,13 @@ function ChatMarkdown({ text }: { text: string }) {
                 >
                   {children}
                 </code>
-              )
+              );
             }
             return (
               <code {...rest} className={className}>
                 {children}
               </code>
-            )
+            );
           },
           pre: ({ children }) => (
             <pre className="my-2 overflow-x-auto rounded-xl border border-black/[0.08] bg-[var(--surface-subtle)] p-2.5 text-[12px] leading-relaxed">
@@ -433,60 +437,58 @@ function ChatMarkdown({ text }: { text: string }) {
         {text}
       </ReactMarkdown>
     </div>
-  )
+  );
 }
 
 function MessageBubble({ message }: { message: MessageLike }) {
-  const isUser = message.role === 'user'
-  const rawItems = message.content as readonly AnyContentItem[]
+  const isUser = message.role === "user";
+  const rawItems = message.content as readonly AnyContentItem[];
   const items = (
     isUser ? rawItems : orderAssistantContentBlocks([...rawItems])
-  ) as readonly AnyContentItem[]
+  ) as readonly AnyContentItem[];
   const textParts = items.filter(
-    (c): c is AnyContentItem & { type: 'text'; text: string } =>
-      c.type === 'text' && typeof c.text === 'string' && c.text.length > 0,
-  )
-  const toolCalls = items.filter((c) => c.type === 'tool_use')
-  const toolResults = items.filter((c) => c.type === 'tool_result')
+    (c): c is AnyContentItem & { type: "text"; text: string } =>
+      c.type === "text" && typeof c.text === "string" && c.text.length > 0,
+  );
+  const toolCalls = items.filter((c) => c.type === "tool_use");
+  const toolResults = items.filter((c) => c.type === "tool_result");
 
-  const text = textParts.map((t) => t.text).join('\n\n')
+  const text = textParts.map((t) => t.text).join("\n\n");
 
-  const toolCount = toolCalls.length
-  const toolResultCount = toolResults.length
+  const toolCount = toolCalls.length;
+  const toolResultCount = toolResults.length;
   const toolNames = Array.from(
     new Set(
       toolCalls
         .map((c) =>
-          typeof (c as { name?: unknown }).name === 'string'
+          typeof (c as { name?: unknown }).name === "string"
             ? ((c as { name: string }).name as string)
             : null,
         )
         .filter((n): n is string => Boolean(n)),
     ),
-  )
+  );
 
-  const showToolActivity = toolCount > 0 || toolResultCount > 0
-  if (!text && !showToolActivity) return null
+  const showToolActivity = toolCount > 0 || toolResultCount > 0;
+  if (!text && !showToolActivity) return null;
 
   const toolLabel =
     toolCount === 1
-      ? `Ran ${toolNames[0] ?? 'a tool'}`
+      ? `Ran ${toolNames[0] ?? "a tool"}`
       : toolCount > 1
         ? `Ran ${toolCount} tools${
-            toolNames.length > 0
-              ? ` · ${toolNames.slice(0, 3).join(', ')}`
-              : ''
+            toolNames.length > 0 ? ` · ${toolNames.slice(0, 3).join(", ")}` : ""
           }`
         : toolResultCount > 0
-          ? `Ran ${toolResultCount} tool step${toolResultCount === 1 ? '' : 's'}`
-          : ''
+          ? `Ran ${toolResultCount} tool step${toolResultCount === 1 ? "" : "s"}`
+          : "";
 
   return (
     <div
       className={[
-        'flex flex-col gap-1',
-        isUser ? 'items-end' : 'items-start',
-      ].join(' ')}
+        "flex flex-col gap-1",
+        isUser ? "items-end" : "items-start",
+      ].join(" ")}
     >
       {showToolActivity ? (
         <div className="flex max-w-[85%] items-center gap-1.5 rounded-full border border-black/[0.06] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10.5px] text-neutral-600">
@@ -502,15 +504,15 @@ function MessageBubble({ message }: { message: MessageLike }) {
       {text ? (
         <div
           className={[
-            'max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-snug',
+            "max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-snug",
             isUser
-              ? 'whitespace-pre-wrap bg-[#8B3DFF] text-white'
-              : 'border border-black/[0.06] bg-white text-neutral-800',
-          ].join(' ')}
+              ? "whitespace-pre-wrap bg-[#8B3DFF] text-white"
+              : "border border-black/[0.06] bg-white text-neutral-800",
+          ].join(" ")}
         >
           {isUser ? text : <ChatMarkdown text={text} />}
         </div>
       ) : null}
     </div>
-  )
+  );
 }
