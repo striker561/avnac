@@ -1,86 +1,89 @@
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Home05Icon } from '@hugeicons/core-free-icons'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import EditorExportMenu from '../components/editor-export-menu'
-import FabricEditor, { type FabricEditorHandle } from '../components/fabric-editor'
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Home05Icon } from "@hugeicons/core-free-icons";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { usePostHog } from "posthog-js/react";
+import EditorExportMenu from "../components/editor-export-menu";
+import FabricEditor, {
+  type FabricEditorHandle,
+} from "../components/fabric-editor";
 import {
   idbGetEditorRecord,
   idbSetDocumentName,
-} from '../lib/avnac-editor-idb'
+} from "../lib/avnac-editor-idb";
 
 type CreateSearch = {
-  id?: string
-  w?: number
-  h?: number
-}
+  id?: string;
+  w?: number;
+  h?: number;
+};
 
 function parseSearchDimension(v: unknown): number | undefined {
   const n =
-    typeof v === 'number'
-      ? v
-      : typeof v === 'string'
-        ? Number(v)
-        : Number.NaN
-  if (!Number.isFinite(n)) return undefined
-  return Math.min(16000, Math.max(100, Math.round(n)))
+    typeof v === "number" ? v : typeof v === "string" ? Number(v) : Number.NaN;
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(16000, Math.max(100, Math.round(n)));
 }
 
-export const Route = createFileRoute('/create')({
+export const Route = createFileRoute("/create")({
   validateSearch: (raw: Record<string, unknown>): CreateSearch => {
-    const id = raw.id
+    const id = raw.id;
     return {
-      id: typeof id === 'string' && id.length > 0 ? id : undefined,
+      id: typeof id === "string" && id.length > 0 ? id : undefined,
       w: parseSearchDimension(raw.w),
       h: parseSearchDimension(raw.h),
-    }
+    };
   },
   component: CreatePage,
-})
+});
 
 function CreatePage() {
-  const editorRef = useRef<FabricEditorHandle>(null)
-  const [editorReady, setEditorReady] = useState(false)
-  const [documentTitle, setDocumentTitle] = useState('Untitled')
-  const search = Route.useSearch()
-  const id = search.id
-  const initialW = search.w
-  const initialH = search.h
-  const navigate = Route.useNavigate()
+  const editorRef = useRef<FabricEditorHandle>(null);
+  const [editorReady, setEditorReady] = useState(false);
+  const [documentTitle, setDocumentTitle] = useState("Untitled");
+  const search = Route.useSearch();
+  const id = search.id;
+  const initialW = search.w;
+  const initialH = search.h;
+  const navigate = Route.useNavigate();
+  const posthog = usePostHog();
 
   useLayoutEffect(() => {
-    if (id) return
+    if (id) return;
     void navigate({
-      to: '/create',
+      to: "/create",
       search: {
         id: crypto.randomUUID(),
         w: initialW,
         h: initialH,
       },
       replace: true,
-    })
-  }, [id, initialW, initialH, navigate])
+    });
+  }, [id, initialW, initialH, navigate]);
 
   useEffect(() => {
-    if (!id) return
-    let cancelled = false
+    if (!id) return;
+    let cancelled = false;
     void idbGetEditorRecord(id).then((row) => {
-      if (cancelled) return
-      setDocumentTitle(row?.name?.trim() || 'Untitled')
-    })
+      if (cancelled) return;
+      setDocumentTitle(row?.name?.trim() || "Untitled");
+    });
     return () => {
-      cancelled = true
-    }
-  }, [id])
+      cancelled = true;
+    };
+  }, [id]);
 
   const commitDocumentTitle = () => {
-    const t = documentTitle.trim() || 'Untitled'
-    setDocumentTitle(t)
-    if (id) void idbSetDocumentName(id, t)
-  }
+    const t = documentTitle.trim() || "Untitled";
+    setDocumentTitle(t);
+    if (id) {
+      void idbSetDocumentName(id, t);
+      posthog.capture("document_renamed", { file_id: id, new_name: t });
+    }
+  };
 
   if (!id) {
-    return null
+    return null;
   }
 
   return (
@@ -110,7 +113,7 @@ function CreatePage() {
             onChange={(e) => setDocumentTitle(e.target.value)}
             onBlur={commitDocumentTitle}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             className="m-0 w-full min-w-0 truncate border-0 bg-transparent text-sm font-medium leading-snug text-[var(--text)] outline-none focus:ring-0"
             autoComplete="off"
@@ -135,5 +138,5 @@ function CreatePage() {
         />
       </div>
     </div>
-  )
+  );
 }
