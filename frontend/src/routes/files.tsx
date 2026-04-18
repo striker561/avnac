@@ -153,8 +153,8 @@ function FilesPage() {
       <div className="hero-grid" aria-hidden="true" />
 
       <div className="relative z-[1] flex flex-1 flex-col">
-        <header className="px-5 pt-4 sm:px-8 sm:pt-5">
-          <div className="mx-auto flex max-w-6xl justify-end">
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[200] px-5 pt-4 sm:px-8 sm:pt-5">
+          <div className="mx-auto flex max-w-6xl justify-end pointer-events-auto">
             <button
               type="button"
               className="inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--text)] px-6 py-2.5 text-[15px] font-medium text-white transition hover:bg-[#262626] sm:min-h-12 sm:px-8 sm:py-3 sm:text-[1.0625rem]"
@@ -163,7 +163,14 @@ function FilesPage() {
               New file
             </button>
           </div>
-        </header>
+        </div>
+
+        <div
+          className="shrink-0 px-5 pt-4 sm:px-8 sm:pt-5"
+          aria-hidden
+        >
+          <div className="mx-auto flex h-11 max-w-6xl justify-end sm:h-12" />
+        </div>
 
         <div
           className={`mx-auto w-full max-w-6xl flex-1 px-5 py-12 sm:px-8 sm:py-16 lg:py-20 ${selectionCount > 0 ? 'pb-28 sm:pb-32' : ''}`}
