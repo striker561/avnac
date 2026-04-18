@@ -1,8 +1,11 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
+import NewCanvasDialog from '../components/new-canvas-dialog'
 
 export const Route = createFileRoute('/')({ component: Landing })
 
 function Landing() {
+  const [newCanvasOpen, setNewCanvasOpen] = useState(false)
   return (
     <main className="hero-page relative flex min-h-[100dvh] flex-col justify-center overflow-hidden px-5 py-16 sm:px-10 sm:py-20 lg:px-16 lg:py-24">
       <div className="hero-bg-orb hero-bg-orb-a" aria-hidden="true" />
@@ -19,12 +22,13 @@ function Landing() {
             Open-source canvas for layouts and graphics.
           </p>
           <div className="flex flex-wrap items-center gap-4">
-            <Link
-              to="/create"
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-[var(--text)] px-10 py-3.5 text-base font-medium text-white no-underline hover:bg-[#262626] sm:min-h-14 sm:px-12 sm:py-4 sm:text-[1.0625rem]"
+            <button
+              type="button"
+              className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--text)] px-10 py-3.5 text-base font-medium text-white hover:bg-[#262626] sm:min-h-14 sm:px-12 sm:py-4 sm:text-[1.0625rem]"
+              onClick={() => setNewCanvasOpen(true)}
             >
               Open editor
-            </Link>
+            </button>
             <a
               href="https://github.com/"
               target="_blank"
@@ -36,6 +40,10 @@ function Landing() {
           </div>
         </div>
       </div>
+      <NewCanvasDialog
+        open={newCanvasOpen}
+        onClose={() => setNewCanvasOpen(false)}
+      />
     </main>
   )
 }
