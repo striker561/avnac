@@ -12,6 +12,7 @@ const standardJsonEsm = fileURLToPath(
 )
 
 const config = defineConfig({
+  base: '/',
   resolve: {
     tsconfigPaths: true,
     alias: [
