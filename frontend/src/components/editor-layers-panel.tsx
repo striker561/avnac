@@ -9,7 +9,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { Reorder, useDragControls } from 'motion/react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   editorSidebarPanelLeftClass,
   editorSidebarPanelTopClass,
@@ -32,6 +32,74 @@ type Props = {
   onBringForward: (stackIndex: number) => void
   onSendBackward: (stackIndex: number) => void
   onReorder?: (orderedLayerIds: string[]) => void
+  onRenameLayer?: (stackIndex: number, name: string) => void
+}
+
+function LayerRowLabelControl({
+  row,
+  onSelectLayer,
+  onRenameLayer,
+}: {
+  row: EditorLayerRow
+  onSelectLayer: (stackIndex: number) => void
+  onRenameLayer?: (stackIndex: number, name: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(row.label)
+
+  useEffect(() => {
+    if (!editing) setDraft(row.label)
+  }, [row.id, row.label, editing])
+
+  if (editing && onRenameLayer) {
+    return (
+      <input
+        type="text"
+        className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-2 py-1 text-sm text-neutral-800 outline-none focus:border-black/30"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setEditing(false)
+          onRenameLayer(row.index, draft.trim())
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            ;(e.target as HTMLInputElement).blur()
+          }
+          if (e.key === 'Escape') {
+            setDraft(row.label)
+            setEditing(false)
+          }
+        }}
+        autoFocus
+        aria-label="Layer name"
+        onPointerDown={(e) => e.stopPropagation()}
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1.5 text-left text-sm text-neutral-800"
+      onClick={() => onSelectLayer(row.index)}
+      title={onRenameLayer ? 'Double-click to rename' : undefined}
+    >
+      <span
+        className="truncate"
+        onDoubleClick={(e) => {
+          if (!onRenameLayer) return
+          e.preventDefault()
+          e.stopPropagation()
+          setDraft(row.label)
+          setEditing(true)
+        }}
+      >
+        {row.label}
+      </span>
+    </button>
+  )
 }
 
 function layerRowClass(selected: boolean) {
@@ -48,6 +116,7 @@ function LayerReorderRow({
   onToggleVisible,
   onBringForward,
   onSendBackward,
+  onRenameLayer,
 }: {
   row: EditorLayerRow
   value: string
@@ -55,6 +124,7 @@ function LayerReorderRow({
   onToggleVisible: (stackIndex: number) => void
   onBringForward: (stackIndex: number) => void
   onSendBackward: (stackIndex: number) => void
+  onRenameLayer?: (stackIndex: number, name: string) => void
 }) {
   const dragControls = useDragControls()
 
@@ -91,13 +161,11 @@ function LayerReorderRow({
           strokeWidth={1.75}
         />
       </div>
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1.5 text-left text-sm text-neutral-800"
-        onClick={() => onSelectLayer(row.index)}
-      >
-        <span className="truncate">{row.label}</span>
-      </button>
+      <LayerRowLabelControl
+        row={row}
+        onSelectLayer={onSelectLayer}
+        onRenameLayer={onRenameLayer}
+      />
       <button
         type="button"
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-600 hover:bg-black/[0.06]"
@@ -139,22 +207,22 @@ function StaticLayerRow({
   onToggleVisible,
   onBringForward,
   onSendBackward,
+  onRenameLayer,
 }: {
   row: EditorLayerRow
   onSelectLayer: (stackIndex: number) => void
   onToggleVisible: (stackIndex: number) => void
   onBringForward: (stackIndex: number) => void
   onSendBackward: (stackIndex: number) => void
+  onRenameLayer?: (stackIndex: number, name: string) => void
 }) {
   return (
     <li className={layerRowClass(row.selected)}>
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1.5 text-left text-sm text-neutral-800"
-        onClick={() => onSelectLayer(row.index)}
-      >
-        <span className="truncate">{row.label}</span>
-      </button>
+      <LayerRowLabelControl
+        row={row}
+        onSelectLayer={onSelectLayer}
+        onRenameLayer={onRenameLayer}
+      />
       <button
         type="button"
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-600 hover:bg-black/[0.06]"
@@ -199,6 +267,7 @@ export default function EditorLayersPanel({
   onBringForward,
   onSendBackward,
   onReorder,
+  onRenameLayer,
 }: Props) {
   if (!open) return null
 
@@ -249,6 +318,7 @@ export default function EditorLayersPanel({
               onToggleVisible={onToggleVisible}
               onBringForward={onBringForward}
               onSendBackward={onSendBackward}
+              onRenameLayer={onRenameLayer}
             />
           ))}
         </Reorder.Group>
@@ -262,6 +332,7 @@ export default function EditorLayersPanel({
               onToggleVisible={onToggleVisible}
               onBringForward={onBringForward}
               onSendBackward={onSendBackward}
+              onRenameLayer={onRenameLayer}
             />
           ))}
         </ul>
