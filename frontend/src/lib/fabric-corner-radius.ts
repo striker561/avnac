@@ -50,11 +50,15 @@ export function setSceneCornerRadiusOnImage(
     const localR = s > 0 ? R / s : 0
     const cap = Math.min(w, h) / 2
     const rx = Math.min(localR, cap)
+    // Match FabricImage._renderFill: bitmap is drawn from (-w/2,-h/2) in object space with
+    // the cache transform centered on the object. A Rect with left/top origin at (0,0)
+    // anchors the clip's top-left to that center and shifts the mask to the bottom-right
+    // (only one quadrant visible). Center origin keeps the clip aligned with the image.
     const clip = new mod.Rect({
       left: 0,
       top: 0,
-      originX: 'left',
-      originY: 'top',
+      originX: 'center',
+      originY: 'center',
       width: w,
       height: h,
       rx,
