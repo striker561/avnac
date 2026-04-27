@@ -7,6 +7,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import DeleteConfirmDialog from "../components/delete-confirm-dialog";
+import DocumentMigrationDialog from "../components/document-migration-dialog";
 import FileGridCard from "../components/file-grid-card";
 import FilesMultiselectBar from "../components/files-multiselect-bar";
 import NewCanvasDialog from "../components/new-canvas-dialog";
@@ -14,6 +15,7 @@ import { avnacDocumentPreviewEvictPersistId } from "../lib/avnac-document-previe
 import {
   idbDeleteDocument,
   idbListDocuments,
+  idbMigrateLegacyDocument,
   idbPutDocument,
   type AvnacEditorIdbListItem,
 } from "../lib/avnac-editor-idb";
@@ -52,6 +54,14 @@ function FilesPage() {
     title: string;
     message: string;
   } | null>(null);
+  const [migrationDialog, setMigrationDialog] = useState<{
+    ids: string[];
+    title: string;
+    message: string;
+    confirmLabel: string;
+    openFileId?: string;
+  } | null>(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const posthog = usePostHog();
@@ -239,10 +249,83 @@ function FilesPage() {
   );
 
   const selectionCount = selectedIds.length;
+  const legacyItems = items?.filter((row) => row.isLegacy) ?? [];
+  const legacyCount = legacyItems.length;
   const actionButtonClass =
     "inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center border-0 bg-[var(--text)] text-[15px] font-medium text-white transition hover:bg-[#262626] sm:min-h-12 sm:text-[1.0625rem]";
   const menuItemClass =
     "flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[14px] font-medium text-[var(--text)] transition-colors hover:bg-black/[0.04]";
+
+  const requestOpenFile = useCallback(
+    (
+      row: AvnacEditorIdbListItem,
+      source: "thumbnail" | "title" | "menu",
+    ) => {
+      if (row.isLegacy) {
+        setMigrationDialog({
+          ids: [row.id],
+          title: "Convert this file first",
+          message: `"${row.name}" was made in an older version of Avnac. Convert it to the new editor before opening it.`,
+          confirmLabel: "Convert and open",
+          openFileId: row.id,
+        });
+        return;
+      }
+      posthog.capture("file_opened", {
+        file_id: row.id,
+        method: source,
+      });
+      void navigate({ to: "/create", search: { id: row.id } });
+    },
+    [navigate, posthog],
+  );
+
+  const requestMigrateAll = useCallback(() => {
+    if (legacyItems.length === 0) return;
+    setMigrationDialog({
+      ids: legacyItems.map((row) => row.id),
+      title:
+        legacyItems.length === 1
+          ? "Migrate 1 old file?"
+          : `Migrate ${legacyItems.length} old files?`,
+      message:
+        legacyItems.length === 1
+          ? "This file was saved in an older version of Avnac. Convert it now so it opens normally in the new editor."
+          : "These files were saved in an older version of Avnac. Convert them now so they open normally in the new editor.",
+      confirmLabel:
+        legacyItems.length === 1 ? "Convert file" : "Migrate all files",
+    });
+  }, [legacyItems]);
+
+  const confirmMigration = useCallback(() => {
+    if (!migrationDialog || migrationBusy) return;
+    const { ids, openFileId } = migrationDialog;
+    setMigrationBusy(true);
+    void (async () => {
+      try {
+        for (const id of ids) {
+          await idbMigrateLegacyDocument(id);
+        }
+        posthog.capture("legacy_files_migrated", {
+          file_count: ids.length,
+          file_ids: ids,
+          opened_after_migration: openFileId ?? null,
+        });
+        setMigrationDialog(null);
+        refreshList();
+        if (openFileId) {
+          void navigate({ to: "/create", search: { id: openFileId } });
+        }
+      } catch (err) {
+        posthog.captureException(err);
+        setImportError(
+          "Those files could not be converted right now. Try again in a moment.",
+        );
+      } finally {
+        setMigrationBusy(false);
+      }
+    })();
+  }, [migrationBusy, migrationDialog, navigate, posthog, refreshList]);
 
   return (
     <main className="hero-page relative flex min-h-[100dvh] flex-col overflow-hidden">
@@ -335,6 +418,28 @@ function FilesPage() {
               </p>
             ) : null}
 
+            {legacyCount > 0 ? (
+              <div className="mb-8 flex flex-col gap-4 rounded-[1.75rem] border border-amber-300/60 bg-[linear-gradient(135deg,rgba(255,247,214,0.9),rgba(255,236,179,0.7))] p-5 shadow-[0_18px_44px_rgba(190,130,24,0.12)] sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-6">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-900/70">
+                    Old Files Found
+                  </div>
+                  <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-amber-950/80 sm:text-base">
+                    {legacyCount === 1
+                      ? "There is 1 file from the older editor in this browser. Convert it once and it will open normally in the new canvas."
+                      : `There are ${legacyCount} files from the older editor in this browser. Convert them once and they will open normally in the new canvas.`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border-0 bg-[var(--text)] px-6 py-2.5 text-[15px] font-medium text-white transition hover:bg-[#262626] sm:min-h-12"
+                  onClick={requestMigrateAll}
+                >
+                  {legacyCount === 1 ? "Migrate old file" : "Migrate all old files"}
+                </button>
+              </div>
+            ) : null}
+
             {items === null ? (
               <p className="text-lg text-[var(--text-muted)]">Loading…</p>
             ) : items.length === 0 ? (
@@ -361,6 +466,7 @@ function FilesPage() {
                     selected={selectedIds.includes(row.id)}
                     onToggleSelect={toggleSelect}
                     onRequestDelete={requestDeleteFile}
+                    onRequestOpen={requestOpenFile}
                   />
                 ))}
               </ul>
@@ -384,6 +490,18 @@ function FilesPage() {
         message={deleteDialog?.message ?? ""}
         onClose={() => setDeleteDialog(null)}
         onConfirm={confirmDelete}
+      />
+      <DocumentMigrationDialog
+        open={migrationDialog !== null}
+        title={migrationDialog?.title ?? ""}
+        message={migrationDialog?.message ?? ""}
+        confirmLabel={migrationDialog?.confirmLabel ?? "Convert file"}
+        busy={migrationBusy}
+        onClose={() => {
+          if (migrationBusy) return;
+          setMigrationDialog(null);
+        }}
+        onConfirm={confirmMigration}
       />
     </main>
   );
