@@ -137,6 +137,17 @@ function CreatePage() {
   const legacyBlocked = documentStorageKind === "legacy";
   const loadingDocument = documentStorageKind === "loading";
 
+  useEffect(() => {
+    if (!legacyBlocked || !id) return;
+    posthog.capture("legacy_conversion_prompt_opened", {
+      surface: "create_page",
+      trigger_source: "direct_open",
+      file_count: 1,
+      file_ids: [id],
+      open_after_conversion: false,
+    });
+  }, [id, legacyBlocked, posthog]);
+
   return (
     <div className="flex h-[100dvh] min-h-0 flex-col bg-[var(--surface-subtle)]">
       <header className="flex flex-shrink-0 items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3 sm:px-5 sm:py-3.5">
@@ -205,17 +216,45 @@ function CreatePage() {
         busy={migrationBusy}
         onClose={() => {
           if (migrationBusy) return;
+          posthog.capture("legacy_conversion_cancelled", {
+            surface: "create_page",
+            trigger_source: "direct_open",
+            file_count: 1,
+            file_ids: [id],
+            open_after_conversion: false,
+          });
           void navigate({ to: "/files" });
         }}
         onConfirm={() => {
           if (migrationBusy) return;
+          posthog.capture("legacy_conversion_started", {
+            surface: "create_page",
+            trigger_source: "direct_open",
+            file_count: 1,
+            file_ids: [id],
+            open_after_conversion: false,
+          });
           setMigrationBusy(true);
           void (async () => {
             try {
               await idbMigrateLegacyDocument(id);
-              posthog.capture("legacy_file_migrated", { file_id: id });
+              posthog.capture("legacy_conversion_completed", {
+                surface: "create_page",
+                trigger_source: "direct_open",
+                file_count: 1,
+                file_ids: [id],
+                open_after_conversion: false,
+                opened_file_id: id,
+              });
               setDocumentStorageKind("current");
             } catch (err) {
+              posthog.capture("legacy_conversion_failed", {
+                surface: "create_page",
+                trigger_source: "direct_open",
+                file_count: 1,
+                file_ids: [id],
+                open_after_conversion: false,
+              });
               posthog.captureException(err);
               console.error("[avnac] legacy migration failed", err);
             } finally {
