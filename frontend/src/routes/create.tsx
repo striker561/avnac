@@ -4,12 +4,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import EditorExportMenu from "../components/editor-export-menu";
+import DocumentMigrationDialog from "../components/document-migration-dialog";
 import SceneEditor, {
   type SceneEditorHandle,
 } from "../components/scene-editor";
 import { useEditorUnsupportedOnThisDevice } from "../hooks/use-editor-device-support";
 import {
   idbGetEditorRecord,
+  idbMigrateLegacyDocument,
   idbSetDocumentName,
 } from "../lib/avnac-editor-idb";
 
@@ -42,6 +44,10 @@ function CreatePage() {
   const editorRef = useRef<SceneEditorHandle>(null);
   const [editorReady, setEditorReady] = useState(false);
   const [documentTitle, setDocumentTitle] = useState("Untitled");
+  const [documentStorageKind, setDocumentStorageKind] = useState<
+    "loading" | "current" | "legacy"
+  >("loading");
+  const [migrationBusy, setMigrationBusy] = useState(false);
   const search = Route.useSearch();
   const id = search.id;
   const initialW = search.w;
@@ -67,9 +73,11 @@ function CreatePage() {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
+    setDocumentStorageKind("loading");
     void idbGetEditorRecord(id).then((row) => {
       if (cancelled) return;
       setDocumentTitle(row?.name?.trim() || "Untitled");
+      setDocumentStorageKind(row?.storageKind === "legacy" ? "legacy" : "current");
     });
     return () => {
       cancelled = true;
@@ -126,6 +134,9 @@ function CreatePage() {
     return null;
   }
 
+  const legacyBlocked = documentStorageKind === "legacy";
+  const loadingDocument = documentStorageKind === "loading";
+
   return (
     <div className="flex h-[100dvh] min-h-0 flex-col bg-[var(--surface-subtle)]">
       <header className="flex flex-shrink-0 items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3 sm:px-5 sm:py-3.5">
@@ -168,15 +179,51 @@ function CreatePage() {
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4">
-        <SceneEditor
-          ref={editorRef}
-          persistId={id}
-          persistDisplayName={documentTitle}
-          onReadyChange={setEditorReady}
-          initialArtboardWidth={initialW}
-          initialArtboardHeight={initialH}
-        />
+        {loadingDocument || legacyBlocked ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center rounded-[2rem] border border-[var(--line)] bg-white/60 backdrop-blur-md">
+            <p className="text-sm font-medium text-[var(--text-muted)]">
+              {legacyBlocked ? "Legacy file detected" : "Loading file…"}
+            </p>
+          </div>
+        ) : (
+          <SceneEditor
+            ref={editorRef}
+            persistId={id}
+            persistDisplayName={documentTitle}
+            onReadyChange={setEditorReady}
+            initialArtboardWidth={initialW}
+            initialArtboardHeight={initialH}
+          />
+        )}
       </div>
+      <DocumentMigrationDialog
+        open={legacyBlocked}
+        title="Convert this file first"
+        message={`"${documentTitle}" was made in an older version of Avnac. Convert it to the new editor before you keep editing.`}
+        confirmLabel="Convert file"
+        cancelLabel="Back to files"
+        busy={migrationBusy}
+        onClose={() => {
+          if (migrationBusy) return;
+          void navigate({ to: "/files" });
+        }}
+        onConfirm={() => {
+          if (migrationBusy) return;
+          setMigrationBusy(true);
+          void (async () => {
+            try {
+              await idbMigrateLegacyDocument(id);
+              posthog.capture("legacy_file_migrated", { file_id: id });
+              setDocumentStorageKind("current");
+            } catch (err) {
+              posthog.captureException(err);
+              console.error("[avnac] legacy migration failed", err);
+            } finally {
+              setMigrationBusy(false);
+            }
+          })();
+        }}
+      />
     </div>
   );
 }
