@@ -71,7 +71,7 @@ import { FloatingToolbarDivider } from './floating-toolbar-shell'
 import ImageCropModal, {
   type ImageCropModalApplyPayload,
 } from './image-crop-modal'
-import type { ExportPngOptions } from './editor-export-menu'
+import type { ExportImageOptions } from './editor-export-menu'
 import type { EditorSidebarPanelId } from './editor-floating-sidebar'
 import EditorShortcutsModal from './editor-shortcuts-modal'
 import { AiControllerProvider } from './scene-editor/ai-controller-context'
@@ -147,7 +147,7 @@ const DEFAULT_STROKE: BgValue = { type: 'solid', color: 'transparent' }
 const DEFAULT_LINE_STROKE: BgValue = { type: 'solid', color: '#262626' }
 
 export type SceneEditorHandle = {
-  exportPng: (opts?: ExportPngOptions) => void
+  exportImage: (opts?: ExportImageOptions) => void
   saveDocument: () => void
   loadDocument: (file: File) => Promise<void>
 }
@@ -295,6 +295,23 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
       'center',
     )
 
+    useEffect(() => {
+      if (!bgPopoverOpen) return
+      const onDown = (e: MouseEvent) => {
+        if (backgroundPopoverAnchorRef.current?.contains(e.target as Node)) return
+        setBgPopoverOpen(false)
+      }
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setBgPopoverOpen(false)
+      }
+      document.addEventListener('mousedown', onDown)
+      document.addEventListener('keydown', onKey)
+      return () => {
+        document.removeEventListener('mousedown', onDown)
+        document.removeEventListener('keydown', onKey)
+      }
+    }, [bgPopoverOpen])
+
     const scale = (zoomPercent ?? 100) / 100
     const artboardW = doc.artboard.width
     const artboardH = doc.artboard.height
@@ -307,6 +324,13 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
       selectedSingle?.type === 'text' && textEditingId === selectedSingle.id
     const hasObjectSelected = selectedObjects.length > 0
     const canvasBodySelected = ready && !hasObjectSelected
+
+    useEffect(() => {
+      if (!canvasBodySelected && bgPopoverOpen) {
+        setBgPopoverOpen(false)
+      }
+    }, [bgPopoverOpen, canvasBodySelected])
+
     const fitZoom = useCallback(() => {
       const viewport = viewportRef.current
       if (!viewport) return
@@ -1242,20 +1266,21 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
       }, 0)
     }, [])
 
-    const exportPng = useCallback(
-      (opts?: ExportPngOptions) => {
+    const exportImage = useCallback(
+      (opts?: ExportImageOptions) => {
         void (async () => {
           try {
             const url = await renderAvnacDocumentToDataUrl(doc, vectorBoardDocs, {
+              format: opts?.format ?? 'png',
               multiplier: opts?.multiplier ?? 1,
               transparent: opts?.transparent ?? false,
             })
             const a = document.createElement('a')
             a.href = url
-            a.download = `${persistDisplayNameRef.current || 'avnac'}.png`
+            a.download = `${persistDisplayNameRef.current || 'avnac'}.${opts?.format ?? 'png'}`
             a.click()
           } catch (error) {
-            console.error('[avnac] PNG export failed', error)
+            console.error('[avnac] image export failed', error)
             setExportError(
               'Could not export this canvas. Some images could not be prepared.',
             )
@@ -1267,8 +1292,8 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
 
     useImperativeHandle(
       ref,
-      () => ({ exportPng, saveDocument, loadDocument }),
-      [exportPng, saveDocument, loadDocument],
+      () => ({ exportImage, saveDocument, loadDocument }),
+      [exportImage, saveDocument, loadDocument],
     )
 
     const onZoomSliderChange = useCallback((pct: number) => {
@@ -1398,7 +1423,8 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
           const shouldLockShapeAspect =
             isCornerHandle(drag.handle) &&
             (initial.type === 'image' ||
-              (isPerfectShapeObject(initial) && !freeformScaling))
+              ((initial.type === 'group' || isPerfectShapeObject(initial)) &&
+                !freeformScaling))
           const anchor = getHandleLocalPosition(
             oppositeHandle(drag.handle),
             initial.width,
