@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { parseAvnacDocument } from '../lib/avnac-scene'
+import {
+  getAvnacDocumentStorageKind,
+  parseAvnacDocument,
+} from '../lib/avnac-scene'
 
 describe('parseAvnacDocument', () => {
+  it('detects current vs legacy stored document formats', () => {
+    expect(
+      getAvnacDocumentStorageKind({
+        v: 2,
+        artboard: { width: 1200, height: 900 },
+        bg: { type: 'solid', color: '#ffffff' },
+        objects: [],
+      }),
+    ).toBe('current')
+
+    expect(
+      getAvnacDocumentStorageKind({
+        v: 1,
+        artboard: { width: 1200, height: 900 },
+        bg: { type: 'solid', color: '#ffffff' },
+        fabric: { objects: [] },
+      }),
+    ).toBe('legacy')
+
+    expect(getAvnacDocumentStorageKind({ v: 99 })).toBe('invalid')
+  })
+
   it('migrates legacy Fabric-based v1 documents into the scene format', () => {
     const legacy = {
       v: 1,
