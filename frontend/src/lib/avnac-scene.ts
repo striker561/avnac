@@ -149,6 +149,8 @@ export type AvnacDocument = {
   objects: SceneObject[]
 }
 
+export type AvnacDocumentStorageKind = 'current' | 'legacy' | 'invalid'
+
 const DEFAULT_SHAPE_FILL: BgValue = { type: 'solid', color: '#262626' }
 const DEFAULT_SHAPE_STROKE: BgValue = { type: 'solid', color: 'transparent' }
 const DEFAULT_TEXT_FILL: BgValue = { type: 'solid', color: '#171717' }
@@ -803,10 +805,26 @@ function migrateLegacyDocument(raw: Record<string, unknown>): AvnacDocument | nu
   }
 }
 
-export function parseAvnacDocument(raw: unknown): AvnacDocument | null {
-  if (!raw || typeof raw !== 'object') return null
+export function getAvnacDocumentStorageKind(
+  raw: unknown,
+): AvnacDocumentStorageKind {
+  if (!raw || typeof raw !== 'object') return 'invalid'
   const obj = raw as Record<string, unknown>
   if (obj.v === AVNAC_DOC_VERSION && Array.isArray(obj.objects)) {
+    return 'current'
+  }
+  const legacySceneState = obj['fabric']
+  if (obj.v === 1 && legacySceneState && typeof legacySceneState === 'object') {
+    return 'legacy'
+  }
+  return 'invalid'
+}
+
+export function parseAvnacDocument(raw: unknown): AvnacDocument | null {
+  const kind = getAvnacDocumentStorageKind(raw)
+  if (kind === 'invalid' || !raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  if (kind === 'current') {
     const artboard = obj.artboard as Record<string, unknown> | undefined
     if (
       !artboard ||
@@ -827,8 +845,7 @@ export function parseAvnacDocument(raw: unknown): AvnacDocument | null {
         .filter((row): row is SceneObject => row != null),
     }
   }
-  const legacySceneState = obj['fabric']
-  if (obj.v === 1 && legacySceneState && typeof legacySceneState === 'object') {
+  if (kind === 'legacy') {
     return migrateLegacyDocument(obj)
   }
   return null
