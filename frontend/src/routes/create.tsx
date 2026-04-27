@@ -163,7 +163,7 @@ function CreatePage() {
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           <EditorExportMenu
             disabled={!editorReady}
-            onExport={(opts) => editorRef.current?.exportPng(opts)}
+            onExport={(opts) => editorRef.current?.exportImage(opts)}
           />
         </div>
       </header>
