@@ -168,7 +168,8 @@ function cropImageFromSideHandle(
       image.height / Math.max(IMAGE_MIN_CROP_SIZE, crop.height),
     )
     const cropCenterX = crop.x + crop.width / 2
-    let width = clampNumber(box.width / scale, IMAGE_MIN_CROP_SIZE, naturalWidth)
+    const requestedWidth = box.width / scale
+    let width = clampNumber(requestedWidth, IMAGE_MIN_CROP_SIZE, naturalWidth)
     let x = crop.x
     if (centeredScaling) {
       x = clampNumber(
@@ -177,17 +178,23 @@ function cropImageFromSideHandle(
         Math.max(0, naturalWidth - width),
       )
       width = Math.min(width, naturalWidth)
-      next.x = displayCenterX - (width * scale) / 2
+      next.x =
+        Math.abs(width - requestedWidth) < 0.001
+          ? box.x
+          : displayCenterX - (width * scale) / 2
     } else if (handle === 'w') {
       const cropRight = crop.x + crop.width
       width = Math.min(width, cropRight)
       x = cropRight - width
-      next.x = displayRight - width * scale
+      next.x =
+        Math.abs(width - requestedWidth) < 0.001
+          ? box.x
+          : displayRight - width * scale
     } else {
       width = Math.min(width, naturalWidth - crop.x)
-      next.x = image.x
+      next.x = Math.abs(width - requestedWidth) < 0.001 ? box.x : image.x
     }
-    next.y = image.y
+    next.y = box.y
     next.width = Math.max(1, width * scale)
     next.height = image.height
     next.crop = {
@@ -205,8 +212,9 @@ function cropImageFromSideHandle(
       image.width / Math.max(IMAGE_MIN_CROP_SIZE, crop.width),
     )
     const cropCenterY = crop.y + crop.height / 2
+    const requestedHeight = box.height / scale
     let height = clampNumber(
-      box.height / scale,
+      requestedHeight,
       IMAGE_MIN_CROP_SIZE,
       naturalHeight,
     )
@@ -218,17 +226,23 @@ function cropImageFromSideHandle(
         Math.max(0, naturalHeight - height),
       )
       height = Math.min(height, naturalHeight)
-      next.y = displayCenterY - (height * scale) / 2
+      next.y =
+        Math.abs(height - requestedHeight) < 0.001
+          ? box.y
+          : displayCenterY - (height * scale) / 2
     } else if (handle === 'n') {
       const cropBottom = crop.y + crop.height
       height = Math.min(height, cropBottom)
       y = cropBottom - height
-      next.y = displayBottom - height * scale
+      next.y =
+        Math.abs(height - requestedHeight) < 0.001
+          ? box.y
+          : displayBottom - height * scale
     } else {
       height = Math.min(height, naturalHeight - crop.y)
-      next.y = image.y
+      next.y = Math.abs(height - requestedHeight) < 0.001 ? box.y : image.y
     }
-    next.x = image.x
+    next.x = box.x
     next.width = image.width
     next.height = Math.max(1, height * scale)
     next.crop = {
