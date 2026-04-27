@@ -109,12 +109,11 @@ function VectorBoardObjectPreview({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    if (!doc) {
-      ctx.fillStyle = '#f5f5f4'
-      ctx.fillRect(0, 0, width, height)
-      return
-    }
-    renderVectorBoardDocumentToCanvas(ctx, doc, width, height)
+    ctx.clearRect(0, 0, width, height)
+    if (!doc) return
+    renderVectorBoardDocumentToCanvas(ctx, doc, width, height, {
+      fillBackground: false,
+    })
   }, [doc, width, height])
 
   return <canvas ref={ref} className="block h-full w-full rounded-xl" aria-hidden />
