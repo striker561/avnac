@@ -551,10 +551,9 @@ async function drawSceneObject(
     case 'vector-board': {
       const doc = vectorBoardDocs[obj.boardId]
       if (doc) {
-        renderVectorBoardDocumentToCanvas(ctx, doc, obj.width, obj.height)
-      } else {
-        ctx.fillStyle = '#f3f4f6'
-        ctx.fillRect(0, 0, obj.width, obj.height)
+        renderVectorBoardDocumentToCanvas(ctx, doc, obj.width, obj.height, {
+          fillBackground: false,
+        })
       }
       break
     }
@@ -589,9 +588,14 @@ export async function renderAvnacDocumentToCanvas(
 export async function renderAvnacDocumentToDataUrl(
   doc: AvnacDocument,
   vectorBoardDocs: Record<string, VectorBoardDocument>,
-  opts?: { multiplier?: number; transparent?: boolean },
+  opts?: {
+    format?: 'png' | 'jpg' | 'webp'
+    multiplier?: number
+    transparent?: boolean
+  },
 ): Promise<string> {
   const multiplier = Math.max(1, Math.round(opts?.multiplier ?? 1))
+  const format = opts?.format ?? 'png'
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(doc.artboard.width * multiplier))
   canvas.height = Math.max(1, Math.round(doc.artboard.height * multiplier))
@@ -601,5 +605,11 @@ export async function renderAvnacDocumentToDataUrl(
   await renderAvnacDocumentToCanvas(ctx, doc, vectorBoardDocs, {
     transparent: opts?.transparent,
   })
-  return canvas.toDataURL('image/png')
+  const mimeType =
+    format === 'jpg'
+      ? 'image/jpeg'
+      : format === 'webp'
+        ? 'image/webp'
+        : 'image/png'
+  return canvas.toDataURL(mimeType)
 }
