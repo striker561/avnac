@@ -4,9 +4,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePostHog } from "posthog-js/react";
 import EditorExportMenu from "../components/editor-export-menu";
-import FabricEditor, {
-  type FabricEditorHandle,
-} from "../components/fabric-editor";
+import SceneEditor, {
+  type SceneEditorHandle,
+} from "../components/scene-editor";
 import { useEditorUnsupportedOnThisDevice } from "../hooks/use-editor-device-support";
 import {
   idbGetEditorRecord,
@@ -39,7 +39,7 @@ export const Route = createFileRoute("/create")({
 });
 
 function CreatePage() {
-  const editorRef = useRef<FabricEditorHandle>(null);
+  const editorRef = useRef<SceneEditorHandle>(null);
   const [editorReady, setEditorReady] = useState(false);
   const [documentTitle, setDocumentTitle] = useState("Untitled");
   const search = Route.useSearch();
@@ -168,7 +168,7 @@ function CreatePage() {
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4">
-        <FabricEditor
+        <SceneEditor
           ref={editorRef}
           persistId={id}
           persistDisplayName={documentTitle}
