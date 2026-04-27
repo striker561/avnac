@@ -161,6 +161,7 @@ const DEFAULT_LINE_STROKE: BgValue = { type: 'solid', color: '#262626' }
 const SNAP_DEADBAND_PX = 0.25
 const SNAP_SWITCH_HYSTERESIS_PX = 4
 const SNAP_RELEASE_MULTIPLIER = 2.5
+const ROTATION_SNAP_DEG = 15
 
 type ResizeHandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
@@ -274,6 +275,10 @@ function backgroundTopBtn(disabled?: boolean) {
 
 function angleFromPoints(x1: number, y1: number, x2: number, y2: number) {
   return (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI
+}
+
+function snapAngle(angle: number, step = ROTATION_SNAP_DEG) {
+  return Math.round(angle / step) * step
 }
 
 function artboardAlignAlreadySatisfied(
@@ -418,57 +423,48 @@ function isSideHandle(handle: ResizeHandleId): boolean {
   return handle === 'n' || handle === 'e' || handle === 's' || handle === 'w'
 }
 
-function constrainPerfectShapeBounds(
+function cursorForHandle(handle: ResizeHandleId): CSSProperties['cursor'] {
+  switch (handle) {
+    case 'n':
+    case 's':
+      return 'ns-resize'
+    case 'e':
+    case 'w':
+      return 'ew-resize'
+    case 'nw':
+    case 'se':
+      return 'nwse-resize'
+    case 'ne':
+    case 'sw':
+      return 'nesw-resize'
+  }
+}
+
+function constrainAspectRatioBounds(
   handle: ResizeHandleId,
   anchor: { x: number; y: number },
   pointer: { x: number; y: number },
+  width: number,
+  height: number,
 ): { minX: number; maxX: number; minY: number; maxY: number } {
   const MIN_SIZE = 12
-  if (handle === 'e' || handle === 'w') {
-    const size = Math.max(MIN_SIZE, Math.abs(pointer.x - anchor.x))
-    if (handle === 'e') {
-      return {
-        minX: anchor.x,
-        maxX: anchor.x + size,
-        minY: -size / 2,
-        maxY: size / 2,
-      }
-    }
-    return {
-      minX: anchor.x - size,
-      maxX: anchor.x,
-      minY: -size / 2,
-      maxY: size / 2,
-    }
-  }
-  if (handle === 'n' || handle === 's') {
-    const size = Math.max(MIN_SIZE, Math.abs(pointer.y - anchor.y))
-    if (handle === 's') {
-      return {
-        minX: -size / 2,
-        maxX: size / 2,
-        minY: anchor.y,
-        maxY: anchor.y + size,
-      }
-    }
-    return {
-      minX: -size / 2,
-      maxX: size / 2,
-      minY: anchor.y - size,
-      maxY: anchor.y,
-    }
-  }
-  const size = Math.max(
-    MIN_SIZE,
-    Math.max(Math.abs(pointer.x - anchor.x), Math.abs(pointer.y - anchor.y)),
+  const baseW = Math.max(1, width)
+  const baseH = Math.max(1, height)
+  const scale = Math.max(
+    MIN_SIZE / baseW,
+    MIN_SIZE / baseH,
+    Math.abs(pointer.x - anchor.x) / baseW,
+    Math.abs(pointer.y - anchor.y) / baseH,
   )
+  const nextW = baseW * scale
+  const nextH = baseH * scale
   const xDir = handle === 'ne' || handle === 'se' ? 1 : -1
   const yDir = handle === 'sw' || handle === 'se' ? 1 : -1
   return {
-    minX: xDir > 0 ? anchor.x : anchor.x - size,
-    maxX: xDir > 0 ? anchor.x + size : anchor.x,
-    minY: yDir > 0 ? anchor.y : anchor.y - size,
-    maxY: yDir > 0 ? anchor.y + size : anchor.y,
+    minX: xDir > 0 ? anchor.x : anchor.x - nextW,
+    maxX: xDir > 0 ? anchor.x + nextW : anchor.x,
+    minY: yDir > 0 ? anchor.y : anchor.y - nextH,
+    maxY: yDir > 0 ? anchor.y + nextH : anchor.y,
   }
 }
 
@@ -1227,13 +1223,17 @@ function SelectionOverlay({
 }) {
   const screenScale = Math.max(scale, 0.01)
   const borderWidth = 1.5 / screenScale
-  const handleSize = 12 / screenScale
-  const handleOffset = -handleSize / 2
-  const rotateHandleSize = 12 / screenScale
-  const rotateOffset = -28 / screenScale
-  const handles = isPerfectShapeObject(object)
-    ? (['nw', 'ne', 'se', 'sw'] as ResizeHandleId[])
-    : RESIZE_HANDLES
+  const cornerHandleSize = 12 / screenScale
+  const sideHandleLength = 22 / screenScale
+  const sideHandleThickness = 8 / screenScale
+  const cornerHitSize = 24 / screenScale
+  const sideHitLength = 32 / screenScale
+  const sideHitThickness = 24 / screenScale
+  const rotateHitSize = 28 / screenScale
+  const rotateHandleSize = 16 / screenScale
+  const rotateCenterOffset = 30 / screenScale
+  const handleChromeClass =
+    'block border border-[#aeb0bd] bg-white shadow-[0_1px_3px_rgba(15,23,42,0.18),0_0_0_1px_rgba(255,255,255,0.95)] transition-[transform,border-color,box-shadow] duration-150 group-hover:scale-110 group-hover:border-[#ff9f6e] group-hover:shadow-[0_2px_8px_rgba(15,23,42,0.22),0_0_0_3px_rgba(255,159,110,0.18)]'
   return (
     <div
       className="pointer-events-none absolute z-[22]"
@@ -1250,21 +1250,38 @@ function SelectionOverlay({
         className="absolute inset-0 rounded-[6px]"
         style={{
           border: `${borderWidth}px solid ${SELECT_ACCENT}`,
-          boxShadow: `0 0 0 ${1 / screenScale}px color-mix(in srgb, ${SELECT_ACCENT} 18%, transparent)`,
+          boxShadow: `0 0 0 ${1 / screenScale}px rgba(255,255,255,0.9), 0 0 0 ${2.5 / screenScale}px color-mix(in srgb, ${SELECT_ACCENT} 16%, transparent)`,
         }}
       />
-      {handles.map((handle) => {
+      {RESIZE_HANDLES.map((handle) => {
+        const horizontalSide = handle === 'e' || handle === 'w'
+        const verticalSide = handle === 'n' || handle === 's'
+        const side = horizontalSide || verticalSide
+        const hitWidth = horizontalSide ? sideHitLength : side ? sideHitThickness : cornerHitSize
+        const hitHeight = verticalSide ? sideHitLength : side ? sideHitThickness : cornerHitSize
+        const visualWidth = horizontalSide
+          ? sideHandleLength
+          : verticalSide
+            ? sideHandleThickness
+            : cornerHandleSize
+        const visualHeight = verticalSide
+          ? sideHandleLength
+          : horizontalSide
+            ? sideHandleThickness
+            : cornerHandleSize
+        const hitOffsetX = -hitWidth / 2
+        const hitOffsetY = -hitHeight / 2
         const common =
-          'pointer-events-auto absolute z-[2] border border-white bg-[var(--accent)] shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
+          'group pointer-events-auto absolute z-[2] flex items-center justify-center rounded-full bg-transparent p-0 outline-none touch-none'
         const pos: Record<ResizeHandleId, CSSProperties> = {
-          nw: { left: handleOffset, top: handleOffset },
-          n: { left: '50%', top: handleOffset, marginLeft: handleOffset },
-          ne: { right: handleOffset, top: handleOffset },
-          e: { right: handleOffset, top: '50%', marginTop: handleOffset },
-          se: { right: handleOffset, bottom: handleOffset },
-          s: { left: '50%', bottom: handleOffset, marginLeft: handleOffset },
-          sw: { left: handleOffset, bottom: handleOffset },
-          w: { left: handleOffset, top: '50%', marginTop: handleOffset },
+          nw: { left: hitOffsetX, top: hitOffsetY },
+          n: { left: '50%', top: hitOffsetY, marginLeft: hitOffsetX },
+          ne: { right: hitOffsetX, top: hitOffsetY },
+          e: { right: hitOffsetX, top: '50%', marginTop: hitOffsetY },
+          se: { right: hitOffsetX, bottom: hitOffsetY },
+          s: { left: '50%', bottom: hitOffsetY, marginLeft: hitOffsetX },
+          sw: { left: hitOffsetX, bottom: hitOffsetY },
+          w: { left: hitOffsetX, top: '50%', marginTop: hitOffsetY },
         }
         return (
           <button
@@ -1274,28 +1291,57 @@ function SelectionOverlay({
             className={common}
             style={{
               ...pos[handle],
-              width: handle === 'e' || handle === 'w' ? handleSize * 2.15 : handleSize,
-              height: handle === 'e' || handle === 'w' ? Math.max(4 / screenScale, handleSize * 0.6) : handleSize,
-              borderRadius:
-                handle === 'e' || handle === 'w'
-                  ? `${handleSize}px`
-                  : '9999px',
+              width: hitWidth,
+              height: hitHeight,
+              cursor: cursorForHandle(handle),
             }}
             onPointerDown={(e) => onHandlePointerDown(e, handle)}
-          />
+          >
+            <span
+              aria-hidden="true"
+              className={handleChromeClass}
+              style={{
+                width: visualWidth,
+                height: visualHeight,
+                borderRadius: side ? `${sideHandleThickness}px` : '9999px',
+              }}
+            />
+          </button>
         )
       })}
+      <div
+        aria-hidden="true"
+        className="absolute left-1/2 -translate-x-1/2 rounded-full"
+        style={{
+          bottom: -rotateCenterOffset,
+          width: Math.max(1 / screenScale, borderWidth),
+          height: rotateCenterOffset,
+          background: SELECT_ACCENT,
+          boxShadow: `0 0 0 ${1 / screenScale}px rgba(255,255,255,0.85)`,
+        }}
+      />
       <button
         type="button"
         tabIndex={-1}
-        className="pointer-events-auto absolute left-1/2 z-[2] -translate-x-1/2 rounded-full border border-white bg-white shadow-[0_2px_8px_rgba(0,0,0,0.18)]"
+        className="group pointer-events-auto absolute left-1/2 z-[2] flex -translate-x-1/2 items-center justify-center rounded-full bg-transparent p-0 outline-none touch-none"
         style={{
-          top: rotateOffset,
-          width: rotateHandleSize,
-          height: rotateHandleSize,
+          bottom: -(rotateCenterOffset + rotateHitSize / 2),
+          width: rotateHitSize,
+          height: rotateHitSize,
+          cursor: 'grab',
         }}
         onPointerDown={onRotatePointerDown}
-      />
+      >
+        <span
+          aria-hidden="true"
+          className={handleChromeClass}
+          style={{
+            width: rotateHandleSize,
+            height: rotateHandleSize,
+            borderRadius: '9999px',
+          }}
+        />
+      </button>
     </div>
   )
 }
@@ -1449,6 +1495,8 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
     const [textEditingId, setTextEditingId] = useState<string | null>(null)
     const [textDraft, setTextDraft] = useState('')
     const [hoveredId, setHoveredId] = useState<string | null>(null)
+    const [backgroundActive, setBackgroundActive] = useState(false)
+    const [backgroundHovered, setBackgroundHovered] = useState(false)
     const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null)
     const [snapGuides, setSnapGuides] = useState<SceneSnapGuide[]>([])
     const [selectionRev, setSelectionRev] = useState(0)
@@ -2761,10 +2809,13 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
               pt.y,
             )
             const delta = angle - drag.startAngle
+            const nextRotation = drag.initialRotation + delta
             setDoc((prev) => ({
               ...prev,
               objects: prev.objects.map((obj) =>
-                obj.id === drag.id ? { ...obj, rotation: drag.initialRotation + delta } : obj,
+                obj.id === drag.id
+                  ? { ...obj, rotation: e.shiftKey ? snapAngle(nextRotation) : nextRotation }
+                  : obj,
               ),
             }))
             return
@@ -2773,9 +2824,11 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
           const center = getObjectCenter(initial)
           const local = pointerSceneDelta(pt.x - center.x, pt.y - center.y, initial.rotation)
           const centeredScaling = e.altKey
-          if (isPerfectShapeObject(initial) && isSideHandle(drag.handle)) {
-            return
-          }
+          const freeformScaling = e.shiftKey
+          const shouldLockShapeAspect =
+            isPerfectShapeObject(initial) &&
+            isCornerHandle(drag.handle) &&
+            !freeformScaling
           const anchor = getHandleLocalPosition(
             oppositeHandle(drag.handle),
             initial.width,
@@ -2803,23 +2856,38 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
             maxX = halfW
             minY = -halfH
             maxY = halfH
-          } else if (isPerfectShapeObject(initial)) {
-            const constrained = constrainPerfectShapeBounds(
+          } else if (drag.handle === 'e' || drag.handle === 'w') {
+            minY = -initial.height / 2
+            maxY = initial.height / 2
+          } else if (drag.handle === 'n' || drag.handle === 's') {
+            minX = -initial.width / 2
+            maxX = initial.width / 2
+          } else if (shouldLockShapeAspect) {
+            const constrained = constrainAspectRatioBounds(
               drag.handle,
               anchor,
               { x: px, y: py },
+              initial.width,
+              initial.height,
             )
             minX = constrained.minX
             maxX = constrained.maxX
             minY = constrained.minY
             maxY = constrained.maxY
           }
-          if (centeredScaling && isPerfectShapeObject(initial)) {
-            const size = Math.max(maxX - minX, maxY - minY, 12)
-            minX = -size / 2
-            maxX = size / 2
-            minY = -size / 2
-            maxY = size / 2
+          if (centeredScaling && shouldLockShapeAspect) {
+            const scale = Math.max(
+              12 / Math.max(1, initial.width),
+              12 / Math.max(1, initial.height),
+              (maxX - minX) / Math.max(1, initial.width),
+              (maxY - minY) / Math.max(1, initial.height),
+            )
+            const nextW = Math.max(1, initial.width) * scale
+            const nextH = Math.max(1, initial.height) * scale
+            minX = -nextW / 2
+            maxX = nextW / 2
+            minY = -nextH / 2
+            maxY = nextH / 2
           }
           if (maxX - minX < 12) {
             const mid = (maxX + minX) / 2
@@ -2889,6 +2957,7 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
       (e: ReactPointerEvent<HTMLDivElement>, obj: SceneObject) => {
         if (e.button !== 0) return
         e.stopPropagation()
+        setBackgroundActive(false)
         if (textEditingId && textEditingId !== obj.id) {
           commitTextDraft()
         }
@@ -2902,15 +2971,27 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
         setContextMenu(null)
         if (obj.locked) return
         const pt = pointerToScene(e.clientX, e.clientY)
-        const ids = selectedIds.includes(obj.id) ? selectedIds : [obj.id]
-        const initial = new Map<string, { x: number; y: number }>()
-        for (const row of doc.objects) {
-          if (ids.includes(row.id)) initial.set(row.id, { x: row.x, y: row.y })
+        const sourceIds = selectedIds.includes(obj.id) ? selectedIds : [obj.id]
+        let ids = sourceIds
+        let movingObjects = doc.objects.filter((row) => ids.includes(row.id))
+        if (e.altKey && movingObjects.length > 0) {
+          const duplicates = movingObjects.map((row) => {
+            const dup = renameWithFreshIds(row)
+            dup.locked = false
+            return dup
+          })
+          ids = duplicates.map((row) => row.id)
+          movingObjects = duplicates
+          setDoc((prev) => ({ ...prev, objects: [...prev.objects, ...duplicates] }))
+          setSelectedIds(ids)
         }
-        const movingObjects = doc.objects.filter((row) => ids.includes(row.id))
+        const initial = new Map<string, { x: number; y: number }>()
+        for (const row of movingObjects) {
+          initial.set(row.id, { x: row.x, y: row.y })
+        }
         const initialBounds = getSelectionBounds(movingObjects)
         const snapTargets = doc.objects
-          .filter((row) => row.visible && !ids.includes(row.id))
+          .filter((row) => row.visible && !sourceIds.includes(row.id))
           .map((row) => getObjectRotatedBounds(row))
         startWindowDrag({
           kind: 'move',
@@ -2922,7 +3003,14 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
           snapTargets,
         })
       },
-      [commitTextDraft, doc.objects, pointerToScene, selectedIds, startWindowDrag, textEditingId],
+      [
+        commitTextDraft,
+        doc.objects,
+        pointerToScene,
+        selectedIds,
+        startWindowDrag,
+        textEditingId,
+      ],
     )
 
     const onSelectionHandlePointerDown = useCallback(
@@ -2961,14 +3049,15 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
     const onViewportPointerDown = useCallback(
       (e: ReactPointerEvent<HTMLDivElement>) => {
         if (e.button !== 0) return
-        if (e.target !== e.currentTarget && e.target !== artboardInnerRef.current) return
         if (textEditingId) {
           commitTextDraft()
         }
         setContextMenu(null)
         setHoveredId(null)
+        setBackgroundHovered(true)
         const additive = e.shiftKey || e.metaKey || e.ctrlKey
         const pt = pointerToScene(e.clientX, e.clientY)
+        setBackgroundActive(!additive)
         if (!additive) setSelectedIds([])
         startWindowDrag({
           kind: 'marquee',
@@ -2988,6 +3077,19 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
         textEditingId,
       ],
     )
+
+    const onArtboardPointerEnter = useCallback(() => {
+      setBackgroundHovered(true)
+    }, [])
+
+    const onArtboardPointerMove = useCallback(() => {
+      setBackgroundHovered(true)
+    }, [])
+
+    const onArtboardPointerLeave = useCallback(() => {
+      setHoveredId(null)
+      setBackgroundHovered(false)
+    }, [])
 
     const onViewportContextMenu = useCallback(
       (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -3621,8 +3723,10 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
                     background:
                       doc.bg.type === 'solid' ? doc.bg.color : doc.bg.css,
                   }}
+                  onPointerEnter={onArtboardPointerEnter}
+                  onPointerMove={onArtboardPointerMove}
                   onPointerDown={onViewportPointerDown}
-                  onPointerLeave={() => setHoveredId(null)}
+                  onPointerLeave={onArtboardPointerLeave}
                 >
                   <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
                     {doc.objects
@@ -3663,6 +3767,15 @@ const SceneEditor = forwardRef<SceneEditorHandle, SceneEditorProps>(
                   textEditingId == null ? (
                     <SelectionBoundsOverlay
                       bounds={getObjectRotatedBounds(hoveredObject)}
+                      scale={scale}
+                    />
+                  ) : null}
+                  {!hoveredObject &&
+                  selectedIds.length === 0 &&
+                  textEditingId == null &&
+                  (backgroundActive || backgroundHovered) ? (
+                    <SelectionBoundsOverlay
+                      bounds={{ left: 0, top: 0, width: artboardW, height: artboardH }}
                       scale={scale}
                     />
                   ) : null}
